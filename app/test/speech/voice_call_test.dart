@@ -1,9 +1,10 @@
-import 'dart:typed_data';
+import 'dart:async';
 
 import 'package:dsh_app/speech/call/voice_call.dart';
 import 'package:dsh_app/speech/deepseek_speech.dart';
 import 'package:dsh_app/speech/speech_audio.dart';
 import 'package:dsh_app/speech/speech_out.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'speech_fakes.dart';
@@ -21,7 +22,7 @@ class _Rig {
     call = VoiceCallController(
       audio: audio,
       conversation: conversation,
-      recognizer: () async => noRecognizer ? null : this.cloud,
+      recognizer: () async => noRecognizer ? null : (pick != null ? await pick!() : (next ?? this.cloud)),
       voice: () {
         final out = FakeOut();
         outs.add(out);
@@ -37,6 +38,12 @@ class _Rig {
 
   final FakeAudio audio;
   final FakeCloud cloud;
+
+  /// What the recognition setting names now, when changed during the call.
+  FakeCloud? next;
+
+  /// Or, answered later: the recognizer as the provider would find it.
+  Future<FakeCloud> Function()? pick;
   final conversation = FakeConversation();
   final outs = <FakeOut>[];
   int cues = 0;
@@ -53,6 +60,49 @@ class _Rig {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('persistent call stages contain no transcript, reply or audio content', () async {
+    const channel = MethodChannel('dsh/diagnostics');
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    final records = <Map<Object?, Object?>>[];
+    final writes = Completer<void>();
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      expect(call.method, 'recordVoiceStage');
+      records.add(call.arguments as Map<Object?, Object?>);
+      return writes.future;
+    });
+    addTearDown(() {
+      if (!writes.isCompleted) writes.complete();
+      messenger.setMockMethodCallHandler(channel, null);
+    });
+    final rig = _Rig();
+    rig.cloud.text = 'PRIVATE_TRANSCRIPT';
+    await rig.call.start();
+    await rig.say();
+    rig.conversation.reply('PRIVATE_REPLY');
+    rig.call.hangUp();
+    await pumpEventQueue();
+    final stages = records.map((row) => row['stage']).toList();
+    expect(
+      stages,
+      containsAllInOrder([
+        'call_started',
+        'preparing',
+        'capture_started',
+        'listening',
+        'utterance_ready',
+        'recognizing',
+        'recognized',
+        'reply_received',
+        'call_ended',
+      ]),
+    );
+    for (final record in records) {
+      expect(record.keys.every((key) => const ['stage', 'backend', 'code'].contains(key)), true);
+      expect(record.toString(), isNot(contains('PRIVATE_')));
+    }
+    rig.call.dispose();
+  });
 
   test('a turn: heard, sent with the hint once, the reply read as it grows', () async {
     final rig = _Rig();
@@ -123,6 +173,81 @@ void main() {
     expect(rig.outs.single.stopped, isTrue);
     expect(rig.conversation.interrupts, 1);
     expect(rig.conversation.sent.last, '（被打断在：好的，）\n换个话题吧');
+  });
+
+  test('the turns: what was said and her reply, cut where she stopped', () async {
+    final rig = await speaking();
+    expect(rig.call.turns.single.you, '今天天气怎么样');
+    expect(rig.call.turns.single.her, '好的，我来详细说一说。');
+    await over(rig, '我想问别的');
+    expect(rig.call.turns.first.her, '好的，');
+    expect(rig.call.turns.first.cut, isTrue);
+    expect(rig.call.turns.last.you, '我想问别的');
+    expect(rig.call.turns.last.her, isEmpty);
+    rig.call.hangUp();
+  });
+
+  test('another recognition setting during the call takes the next sentence', () async {
+    final rig = _Rig();
+    await rig.call.start();
+    final other = FakeCloud('换了识别方式');
+    rig.next = other;
+    await rig.call.refreshRecognizer();
+    await rig.say();
+    expect(other.heard, hasLength(1));
+    expect(rig.cloud.heard, isEmpty);
+    expect(rig.conversation.sent.last, endsWith('换了识别方式'));
+    rig.call.hangUp();
+  });
+
+  test('two quick recognition changes: the later one stays, however the answers come back', () async {
+    final rig = _Rig();
+    await rig.call.start();
+    final slow = Completer<void>();
+    final first = FakeCloud('先选的');
+    final second = FakeCloud('后选的');
+    var calls = 0;
+    rig.pick = () async {
+      calls++;
+      if (calls == 1) {
+        await slow.future;
+        return first;
+      }
+      return second;
+    };
+    final earlier = rig.call.refreshRecognizer();
+    await rig.call.refreshRecognizer();
+    slow.complete();
+    await earlier;
+    await rig.say();
+    expect(second.heard, hasLength(1));
+    expect(first.heard, isEmpty);
+    rig.call.hangUp();
+  });
+
+  test('a recognition change while the call starts: the latest is used from the first sentence', () async {
+    final rig = _Rig();
+    final slow = Completer<void>();
+    final first = FakeCloud('先选的');
+    final second = FakeCloud('后选的');
+    var calls = 0;
+    rig.pick = () async {
+      calls++;
+      if (calls == 1) {
+        await slow.future;
+        return first;
+      }
+      return second;
+    };
+    final starting = rig.call.start();
+    await pumpEventQueue();
+    await rig.call.refreshRecognizer();
+    slow.complete();
+    await starting;
+    await rig.say();
+    expect(second.heard, hasLength(1));
+    expect(first.heard, isEmpty);
+    rig.call.hangUp();
   });
 
   test('停 over her: she stops and nothing is sent; the next message still says where', () async {
@@ -279,5 +404,50 @@ void main() {
     expect(rig.outs.single.stopped, isTrue);
     expect(rig.call.phase, CallPhase.listening);
     expect(rig.conversation.interrupts, 0);
+  });
+
+  test('skip before she begins: none of this reply is read, it goes on in the conversation', () async {
+    final rig = _Rig();
+    await rig.call.start();
+    await rig.say();
+    rig.conversation.reply('北京晴，');
+    expect(rig.call.phase, CallPhase.thinking);
+    rig.call.skip();
+    expect(rig.outs.single.stopped, isTrue);
+    expect(rig.call.phase, CallPhase.listening);
+    rig.conversation.reply('北京晴，最高二十度。', done: true);
+    expect(rig.outs.single.added, ['北京晴，']);
+
+    // Before any text: none comes to her voice either.
+    await rig.say();
+    rig.call.skip();
+    rig.conversation.reply('好的。', done: true);
+    expect(rig.outs, hasLength(1));
+    expect(rig.call.phase, CallPhase.listening);
+    expect(rig.conversation.interrupts, 0);
+  });
+
+  test('skip while what was said is still being made out: it is sent, its reply not read', () async {
+    final rig = _Rig();
+    await rig.call.start();
+    final gate = Completer<void>();
+    rig.cloud.wait = gate.future;
+    await rig.say();
+    expect(rig.call.phase, CallPhase.thinking);
+    rig.call.skip();
+    gate.complete();
+    await pumpEventQueue();
+    expect(rig.conversation.sent.single, endsWith('今天天气怎么样'));
+    expect(rig.call.phase, CallPhase.listening);
+    rig.conversation.reply('晴。', done: true);
+    expect(rig.outs, isEmpty);
+    expect(rig.call.phase, CallPhase.listening);
+
+    // The next one is read again.
+    rig.cloud.wait = null;
+    await rig.say();
+    rig.conversation.reply('好的。');
+    expect(rig.outs, hasLength(1));
+    rig.call.hangUp();
   });
 }

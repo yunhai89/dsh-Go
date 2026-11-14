@@ -19,6 +19,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../diagnostics/diagnostics_channel.dart';
 import '../speech_audio.dart';
 import '../speech_out.dart';
 import '../voice_cloud.dart';
@@ -76,6 +77,17 @@ abstract class CallConversation {
 /// The person's choices for a call: speaking over her stops her; the
 /// loudspeaker or the earpiece; [spokenHint] goes before the first message.
 typedef CallChoices = ({bool bargeIn, bool speaker, String? spokenHint});
+
+/// One exchange of the call as it reads: what the person said, and her reply
+/// as far as it is known (all of it, or, [cut], as far as she got).
+@immutable
+class CallTurn {
+  const CallTurn(this.you, {this.her = '', this.cut = false});
+
+  final String you;
+  final String her;
+  final bool cut;
+}
 
 class VoiceCallController extends ChangeNotifier {
   VoiceCallController({
@@ -165,7 +177,15 @@ class VoiceCallController extends ChangeNotifier {
   bool _replyDone = true;
   int _turn = 0;
   int _recognizing = 0;
+
+  /// The recognition under way when she was skipped before speaking.
+  int _hushed = 0;
   bool _disposed = false;
+
+  final _turns = <CallTurn>[];
+
+  /// The call so far, oldest first.
+  List<CallTurn> get turns => List.unmodifiable(_turns);
 
   CallPhase get phase => _phase;
   CallEnd? get ended => _ended;
@@ -200,7 +220,22 @@ class VoiceCallController extends ChangeNotifier {
   /// sending, the voice); cleared when the next turn starts.
   Object? get error => _error;
 
+  /// The recognition setting changed: what is said next goes to what it names
+  /// now (if that can listen; else to the one already in use).
+  Future<void> refreshRecognizer() async {
+    if (_phase == CallPhase.ended) return;
+    final mine = ++_refreshing;
+    // Still starting: start() looks again with the new setting.
+    if (_cloud == null) return;
+    final next = await recognizer();
+    // A later change has the last word, whichever answer comes back first.
+    if (next != null && mine == _refreshing && _phase != CallPhase.ended) _cloud = next;
+  }
+
+  int _refreshing = 0;
+
   Future<void> start() async {
+    unawaited(const DiagnosticsChannel().recordVoiceStage('call_started'));
     _replySub = conversation.replies.listen(_onReply);
     _audioSub = audio.events.listen(_onAudio);
     final chosen = await choices();
@@ -209,8 +244,14 @@ class VoiceCallController extends ChangeNotifier {
     _speaker = chosen.speaker;
     _spokenHint = chosen.spokenHint;
     notifyListeners();
-    final cloud = await recognizer();
-    if (_disposed || _phase == CallPhase.ended) return;
+    VoiceCloud? cloud;
+    int mine;
+    do {
+      // Changed while this looked (refreshRecognizer during start): look again.
+      mine = ++_refreshing;
+      cloud = await recognizer();
+      if (_disposed || _phase == CallPhase.ended) return;
+    } while (mine != _refreshing);
     if (cloud == null) {
       _end(CallEnd.noRecognizer);
       return;
@@ -227,6 +268,7 @@ class VoiceCallController extends ChangeNotifier {
         return;
       }
     }
+    unawaited(const DiagnosticsChannel().recordVoiceStage('preparing'));
     final started = await audio.startCall(bargeIn: _bargeIn);
     if (_disposed || _phase == CallPhase.ended) {
       if (started == CallStart.ok) unawaited(audio.stopCall());
@@ -234,6 +276,7 @@ class VoiceCallController extends ChangeNotifier {
     }
     switch (started) {
       case CallStart.ok:
+        unawaited(const DiagnosticsChannel().recordVoiceStage('capture_started'));
         _speaker = await audio.speaker(_speaker);
         _set(CallPhase.listening);
       case CallStart.permission:
@@ -268,6 +311,7 @@ class VoiceCallController extends ChangeNotifier {
         }
         _set(CallPhase.hearing);
       case Utterance(:final wav, :final duration):
+        unawaited(const DiagnosticsChannel().recordVoiceStage('utterance_ready'));
         // Finished before [confirmAfter]: the words decide.
         _overTimer?.cancel();
         // The live words stand in until the recognizer's come back.
@@ -300,8 +344,11 @@ class VoiceCallController extends ChangeNotifier {
     if (!_over) _set(CallPhase.thinking);
     String text;
     try {
+      unawaited(const DiagnosticsChannel().recordVoiceStage('recognizing', backend: 'cloud'));
       text = await cloud.transcribe(wav);
+      unawaited(const DiagnosticsChannel().recordVoiceStage('recognized', backend: 'cloud'));
     } catch (error) {
+      unawaited(const DiagnosticsChannel().recordVoiceStage('failed', backend: 'cloud'));
       if (_phase == CallPhase.ended || mine != _recognizing) return;
       if (_over) {
         // Could not make it out: she carries on.
@@ -326,12 +373,15 @@ class VoiceCallController extends ChangeNotifier {
       return;
     }
     _heard = text.trim();
+    _turns.add(CallTurn(_heard));
     _reply = '';
     _said = '';
     _voiced = false;
     _spoken = 0;
     _turn++;
-    _replyDone = false;
+    // Skipped while this was being made out: it still goes, its reply is not read.
+    final hushed = mine == _hushed;
+    _replyDone = hushed;
     final hint = _spokenHint;
     final cut = _cutAt;
     _cutAt = null;
@@ -340,8 +390,12 @@ class VoiceCallController extends ChangeNotifier {
     _hinted = true;
     _cued = false;
     _cueTimer?.cancel();
-    _cueTimer = Timer(cueAfter, _cue);
-    _set(CallPhase.thinking);
+    if (hushed) {
+      if (!_disposed) notifyListeners();
+    } else {
+      _cueTimer = Timer(cueAfter, _cue);
+      _set(CallPhase.thinking);
+    }
     final sent = await conversation.send(message);
     if (_phase == CallPhase.ended) return;
     if (!sent) {
@@ -355,10 +409,12 @@ class VoiceCallController extends ChangeNotifier {
     if (_phase == CallPhase.ended || _replyDone) return;
     final text = reply.text;
     if (text.length > _spoken) {
+      if (_spoken == 0) unawaited(const DiagnosticsChannel().recordVoiceStage('reply_received'));
       final out = _out ??= _newVoice();
       out.add(text.substring(_spoken));
       _spoken = text.length;
       _reply = text;
+      if (_turns.isNotEmpty) _turns.last = CallTurn(_turns.last.you, her: text);
       notifyListeners();
     }
     if (reply.done) {
@@ -378,10 +434,14 @@ class VoiceCallController extends ChangeNotifier {
   void _cutIn() {
     _overTimer?.cancel();
     if (!_over) return;
+    unawaited(const DiagnosticsChannel().recordVoiceStage('interrupted'));
     _over = false;
     final out = _out;
     if (out != null) {
       _cutAt = out.heard;
+      if (_turns.isNotEmpty && _turns.last.her.isNotEmpty) {
+        _turns.last = CallTurn(_turns.last.you, her: out.heard, cut: true);
+      }
       _stopVoice();
     }
     if (!_replyDone) unawaited(conversation.interrupt());
@@ -471,8 +531,13 @@ class VoiceCallController extends ChangeNotifier {
   }
 
   /// Tapped while she speaks: she stops, the reply goes on in the conversation.
+  /// Before she has begun (her voice about to be tried out on the same
+  /// speaker), she won't read this reply at all.
   void skip() {
-    if (_phase != CallPhase.speaking) return;
+    if (_phase != CallPhase.speaking && _phase != CallPhase.thinking) return;
+    // Thinking may still be making out what was said: that reply stays quiet too.
+    if (_phase == CallPhase.thinking) _hushed = _recognizing;
+    _cueTimer?.cancel();
     _stopVoice();
     // The rest is there to read.
     _voiced = false;
@@ -490,6 +555,7 @@ class VoiceCallController extends ChangeNotifier {
 
   void _end(CallEnd why) {
     if (_phase == CallPhase.ended) return;
+    unawaited(const DiagnosticsChannel().recordVoiceStage('call_ended', code: why.index));
     _ended = why;
     _overTimer?.cancel();
     _cueTimer?.cancel();
@@ -501,6 +567,9 @@ class VoiceCallController extends ChangeNotifier {
   }
 
   void _set(CallPhase phase) {
+    if (_phase != phase && phase == CallPhase.listening) {
+      unawaited(const DiagnosticsChannel().recordVoiceStage('listening'));
+    }
     _phase = phase;
     if (!_disposed) notifyListeners();
   }
