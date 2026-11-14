@@ -695,6 +695,9 @@ void main() {
             timer.fire();
             expect(transport.pings, 1);
             expect(link.status.phase, HostLinkPhase.connected);
+            // The link coalesces an in-flight keepalive ping; let the first
+            // synthetic tick settle before firing the next one.
+            await Future<void>.delayed(Duration.zero);
             timer.fire();
             expect(transport.pings, 2);
             expect(timer.tick, 2);

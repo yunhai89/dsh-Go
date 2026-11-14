@@ -2,6 +2,8 @@
 // The menu every message opens (long-press, or ⋯ in a reply's row) is in
 // `message_menu.dart`.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -79,6 +81,7 @@ class ReplyActionRow extends StatefulWidget {
 
 class _ReplyActionRowState extends State<ReplyActionRow> {
   bool _copied = false;
+  Timer? _copyTimer;
 
   /// The check stays long enough to read, then fades back on its own.
   static const _copiedFor = Duration(milliseconds: 2500);
@@ -86,9 +89,16 @@ class _ReplyActionRowState extends State<ReplyActionRow> {
   void _copy() {
     copyMessage(context, widget.text(), toast: false);
     setState(() => _copied = true);
-    Future.delayed(_copiedFor, () {
+    _copyTimer?.cancel();
+    _copyTimer = Timer(_copiedFor, () {
       if (mounted) setState(() => _copied = false);
     });
+  }
+
+  @override
+  void dispose() {
+    _copyTimer?.cancel();
+    super.dispose();
   }
 
   @override
