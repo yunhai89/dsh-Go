@@ -1,5 +1,6 @@
 // About DSH Go: app information, the original author and personal profiles,
-// then the brand mark, slogan and unofficial-app disclaimer.
+// the fork's upstream/maintainer/brand-rights attribution, then the brand mark,
+// slogan and unofficial-app disclaimer.
 
 import 'dart:async';
 
@@ -84,6 +85,42 @@ class AboutPage extends ConsumerWidget {
               l10n.hubAboutGithub,
               '@${AppInfo.author}',
               AppInfo.authorGithubUrl,
+            ),
+          ],
+        ),
+        SettingsSection(
+          title: l10n.hubAboutFork,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 4, 24, 8),
+              child: Text(
+                l10n.hubAboutForkNotice(AppInfo.forkMaintainer),
+                style: theme.textTheme.bodySmall?.copyWith(color: colors.textTertiary, height: 1.5),
+              ),
+            ),
+            _authorLink(
+              context,
+              ref,
+              'about-upstream',
+              l10n.hubAboutUpstream,
+              AppInfo.upstreamRepo,
+              AppInfo.upstreamRepoUrl,
+            ),
+            _authorLink(
+              context,
+              ref,
+              'about-fork-maintainer',
+              l10n.hubAboutForkMaintainer,
+              '@${AppInfo.forkMaintainer}',
+              AppInfo.forkMaintainerUrl,
+            ),
+            _authorLink(
+              context,
+              ref,
+              'about-brand-rights',
+              l10n.hubAboutBrandRights,
+              l10n.hubAboutBrandRightsValue,
+              AppInfo.upstreamAssetsUrl,
             ),
           ],
         ),

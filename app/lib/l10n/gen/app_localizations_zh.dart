@@ -8815,6 +8815,26 @@ class L10nZh extends L10n {
   String get hubAboutGithub => 'GitHub 主页';
 
   @override
+  String get hubAboutFork => 'Fork 与来源';
+
+  @override
+  String hubAboutForkNotice(String maintainer) {
+    return '本应用是 DSH Go 的 fork，由 $maintainer 维护并包含修改，不是官方版本。';
+  }
+
+  @override
+  String get hubAboutUpstream => '上游项目';
+
+  @override
+  String get hubAboutForkMaintainer => 'Fork 维护者';
+
+  @override
+  String get hubAboutBrandRights => '品牌素材版权';
+
+  @override
+  String get hubAboutBrandRightsValue => '名称/标识/吉祥物归 ccch1mneyyy；鲸鱼图形另见 ASSETS.md';
+
+  @override
   String get hubAboutNewVersion => '有新版本';
 
   @override

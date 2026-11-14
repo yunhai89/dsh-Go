@@ -9304,6 +9304,26 @@ class L10nEn extends L10n {
   String get hubAboutGithub => 'GitHub profile';
 
   @override
+  String get hubAboutFork => 'Fork and origin';
+
+  @override
+  String hubAboutForkNotice(String maintainer) {
+    return 'This app is a fork of DSH Go, maintained and modified by $maintainer. It is not an official release.';
+  }
+
+  @override
+  String get hubAboutUpstream => 'Upstream project';
+
+  @override
+  String get hubAboutForkMaintainer => 'Fork maintainer';
+
+  @override
+  String get hubAboutBrandRights => 'Brand asset rights';
+
+  @override
+  String get hubAboutBrandRightsValue => 'Name/logo/mascots: ccch1mneyyy; whale art: see ASSETS.md';
+
+  @override
   String get hubAboutNewVersion => 'Update available';
 
   @override

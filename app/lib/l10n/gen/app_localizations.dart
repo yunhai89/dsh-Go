@@ -16256,6 +16256,42 @@ abstract class L10n {
   /// **'GitHub 主页'**
   String get hubAboutGithub;
 
+  /// No description provided for @hubAboutFork.
+  ///
+  /// In zh, this message translates to:
+  /// **'Fork 与来源'**
+  String get hubAboutFork;
+
+  /// No description provided for @hubAboutForkNotice.
+  ///
+  /// In zh, this message translates to:
+  /// **'本应用是 DSH Go 的 fork，由 {maintainer} 维护并包含修改，不是官方版本。'**
+  String hubAboutForkNotice(String maintainer);
+
+  /// No description provided for @hubAboutUpstream.
+  ///
+  /// In zh, this message translates to:
+  /// **'上游项目'**
+  String get hubAboutUpstream;
+
+  /// No description provided for @hubAboutForkMaintainer.
+  ///
+  /// In zh, this message translates to:
+  /// **'Fork 维护者'**
+  String get hubAboutForkMaintainer;
+
+  /// No description provided for @hubAboutBrandRights.
+  ///
+  /// In zh, this message translates to:
+  /// **'品牌素材版权'**
+  String get hubAboutBrandRights;
+
+  /// No description provided for @hubAboutBrandRightsValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'名称/标识/吉祥物归 ccch1mneyyy；鲸鱼图形另见 ASSETS.md'**
+  String get hubAboutBrandRightsValue;
+
   /// No description provided for @hubAboutNewVersion.
   ///
   /// In zh, this message translates to:

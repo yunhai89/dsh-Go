@@ -89,7 +89,9 @@ void main() {
 
   Future<void> tap(WidgetTester tester, String key) async {
     final row = find.byKey(ValueKey(key));
-    await tester.ensureVisible(row);
+    // Center the row: ensureVisible aligns it to the top, under the pinned page
+    // title, once the page is long enough to scroll.
+    await Scrollable.ensureVisible(tester.element(row), alignment: 0.5);
     await tester.pumpAndSettle();
     await tester.tap(row);
     await tester.pumpAndSettle();

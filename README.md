@@ -13,6 +13,8 @@
   DeepSeek Harness 的 Android 客户端。手机上直接跑，也能遥控你电脑上的 DSH。
 </p>
 
+> **Fork 说明**：本仓库是 [ccch1mneyyy/dsh-go](https://github.com/ccch1mneyyy/dsh-go) 的 fork，由 [yunhai89](https://github.com/yunhai89) 维护并包含修改，**不是官方版本**。原始代码以 [AGPL-3.0](LICENSE) 发布；DSH Go 名称与标识、Deepy 小鲸鱼和鲸娘的版权归原作者 ccch1mneyyy，鲸鱼尾巴图形包含 DeepSeek 官方图标及二创、权利归各自所有者，这些素材**都不在 AGPL 授权范围内**，详见 [ASSETS.md](ASSETS.md)。本 fork 保留原作者署名、许可证和修改说明，不主张上述品牌素材的权利；以修改版身份再发布时，须按 ASSETS.md 换成自己的名称和素材。
+
 <p align="center">
   <a href="https://github.com/ccch1mneyyy/dsh-go/releases/latest"><img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-4B67B4?style=flat-square&logo=android&logoColor=white&labelColor=2B3245"></a>
   <a href="LICENSE"><img alt="许可证 AGPL-3.0" src="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-AGPL--3.0-4B67B4?style=flat-square&labelColor=2B3245"></a>
@@ -342,6 +344,8 @@ DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh --dry-run -f all
 - **名称与素材另有限制**：DSH Go 的名称、标识，以及 Deepy、鲸娘形象不在 AGPL 授权范围内，以修改版身份发布时请换成自己的名称和素材，见 [ASSETS.md](ASSETS.md)。
 
 **许可说明**：AGPL-3.0 允许符合其条款的修改、再发布和商业使用；上述提前联系及署名位置是作者的协作请求，不是对代码许可证追加的限制。品牌与素材须遵守各自的授权条件；本说明不改变 `sdk/`、`examples/` 及第三方内容的许可。
+
+**本 fork 的版权**：本仓库的修改由 yunhai89 维护，按 AGPL-3.0 发布；上游代码、DSH Go 名称与标识、Deepy 和鲸娘的版权归原作者 ccch1mneyyy，鲸鱼尾巴图形另含 DeepSeek 官方图标及二创，品牌素材均不随本 fork 的代码许可证授权。
 
 ## 许可证与致谢
 

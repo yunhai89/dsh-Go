@@ -37,6 +37,13 @@ abstract final class AppInfo {
   static const authorXUrl = 'https://x.com/cccch1mneyyyy';
   static const authorGithubUrl = 'https://github.com/ccch1mneyyy';
 
+  /// This build is a modified fork, not the upstream release.
+  static const forkMaintainer = 'yunhai89';
+  static const forkMaintainerUrl = 'https://github.com/yunhai89';
+  static const upstreamRepo = 'ccch1mneyyy/dsh-go';
+  static const upstreamRepoUrl = 'https://github.com/ccch1mneyyy/dsh-go';
+  static const upstreamAssetsUrl = 'https://github.com/ccch1mneyyy/dsh-go/blob/main/ASSETS.md';
+
   static const deepseekPlatform = 'https://platform.deepseek.com/api_keys';
   static const remoteConsole = 'https://dsh.r2049.cn/app';
 

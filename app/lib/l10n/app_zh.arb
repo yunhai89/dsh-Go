@@ -5463,6 +5463,19 @@
   "hubAboutBilibili": "B站主页",
   "hubAboutX": "X 主页",
   "hubAboutGithub": "GitHub 主页",
+  "hubAboutFork": "Fork 与来源",
+  "hubAboutForkNotice": "本应用是 DSH Go 的 fork，由 {maintainer} 维护并包含修改，不是官方版本。",
+  "@hubAboutForkNotice": {
+    "placeholders": {
+      "maintainer": {
+        "type": "String"
+      }
+    }
+  },
+  "hubAboutUpstream": "上游项目",
+  "hubAboutForkMaintainer": "Fork 维护者",
+  "hubAboutBrandRights": "品牌素材版权",
+  "hubAboutBrandRightsValue": "名称/标识/吉祥物归 ccch1mneyyy；鲸鱼图形另见 ASSETS.md",
   "hubAboutNewVersion": "有新版本",
   "hubValueSet": "已设置",
   "hubValueOff": "未开启",

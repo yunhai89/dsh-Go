@@ -13,6 +13,8 @@
   An Android client for DeepSeek Harness. Run DSH right on your phone, or drive the one on your computer.
 </p>
 
+> **Fork notice:** This repository is a fork of [ccch1mneyyy/dsh-go](https://github.com/ccch1mneyyy/dsh-go), maintained and modified by [yunhai89](https://github.com/yunhai89). It is **not an official release**. The original code is licensed under [AGPL-3.0](LICENSE); the DSH Go name and logo, Deepy and Whale girl are copyright ccch1mneyyy, and the whale-tail artwork includes DeepSeek's official mark and derivative art, each owned by its respective rights holder. None of these assets **are covered by AGPL-3.0** — see [ASSETS.md](ASSETS.md). This fork keeps the original author's credit, license and modification notices and claims no rights to those brand assets. A modified build published under this fork must use its own name and artwork as required by ASSETS.md.
+
 <p align="center">
   <a href="https://github.com/ccch1mneyyy/dsh-go/releases/latest"><img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-4B67B4?style=flat-square&logo=android&logoColor=white&labelColor=2B3245"></a>
   <a href="LICENSE"><img alt="License AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-4B67B4?style=flat-square&labelColor=2B3245"></a>
@@ -342,6 +344,8 @@ The code is open source under [AGPL-3.0](LICENSE), and forking it to study, self
 - **The name and assets are separate.** The DSH Go name and logo, and the Deepy and Whale girl mascots, are not covered by AGPL-3.0. Ship a modified build under your own name and assets; see [ASSETS.md](ASSETS.md).
 
 **License clarification:** AGPL-3.0 permits modification, redistribution and commercial use subject to its terms. Advance contact and the requested credit locations above are collaboration requests from the author, not additional restrictions on the code license. Brand and asset use remains subject to their own terms; this notice does not change the licenses of `sdk/`, `examples/` or third-party content.
+
+**Copyright in this fork:** The modifications in this repository are maintained by yunhai89 and released under AGPL-3.0. The upstream code, the DSH Go name and logo, Deepy and Whale girl remain copyright ccch1mneyyy; the whale-tail artwork also includes DeepSeek's official mark and derivative art. The brand assets are not licensed by this fork's code license.
 
 ## License and acknowledgments
 
