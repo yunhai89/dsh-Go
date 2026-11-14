@@ -203,9 +203,15 @@ class DshMux {
     _running = true;
     _attempt = 0;
     _retryTimer?.cancel();
+    _retryTimer = null;
     final link = _link;
     if (link != null) {
       _handleLoss(link, const DshCarrierLostException('reconnect requested'));
+      // _handleLoss schedules a backoff and counts an attempt; an explicit
+      // reconnect starts now and keeps the first retry delay for a real loss.
+      _retryTimer?.cancel();
+      _retryTimer = null;
+      _attempt = 0;
       unawaited(link.close(4000, 'reconnect requested'));
     }
     _ensureConnecting();

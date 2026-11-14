@@ -16,7 +16,11 @@ Future<SSHSocket> connectNativeSocket(
 class _SSHNativeSocket implements SSHSocket {
   final Socket _socket;
 
-  _SSHNativeSocket._(this._socket);
+  _SSHNativeSocket._(this._socket) {
+    // SSH carries small request/response packets; Nagle delays them by an
+    // RTT under weak or asymmetric links. Latency matters here, not batching.
+    _socket.setOption(SocketOption.tcpNoDelay, true);
+  }
 
   @override
   Stream<Uint8List> get stream => _socket;

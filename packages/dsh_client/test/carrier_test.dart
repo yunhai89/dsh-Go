@@ -142,6 +142,21 @@ void main() {
     expect(carrier.links.last.cancelled, hasLength(1));
   });
 
+  test('reconnect starts immediately instead of waiting for the retry cap', () async {
+    final carrier = _MemoryCarrier();
+    final client = await DshClient.connectCarrier(
+      carrier,
+      muxOptions: const MuxOptions(readyTimeout: Duration(seconds: 2), retryCaps: [Duration(minutes: 1)]),
+    );
+    addTearDown(client.close);
+    expect(carrier.links, hasLength(1));
+
+    client.mux.reconnect();
+    await client.mux.ready(timeout: const Duration(seconds: 1));
+    expect(carrier.links, hasLength(2));
+    expect(client.mux.state, DshConnectionState.connected);
+  });
+
   test('a refused link parks the mux in unauthorized with the carrier reason', () async {
     final carrier = _MemoryCarrier()
       ..refuseWith = const DshCarrierRefusedException('PEER_IDENTITY_MISMATCH', 'key changed');

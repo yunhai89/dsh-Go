@@ -52,6 +52,11 @@ void main() {
     (i) => {'seq': i, 'text': 'Synthetic 合成 $i 😀\n'.padRight(84, '.'), 'done': i.isEven},
   );
   final large = jsonEncode({'type': 'item', 'streamId': 'history', 'value': rows});
+  final medium = jsonEncode({
+    'type': 'item',
+    'streamId': 'history',
+    'value': 'x' * (300 * 1024),
+  });
   final small = jsonEncode({'type': 'item', 'streamId': 'other', 'value': 'after snapshot'});
   final end = jsonEncode({'type': 'end', 'streamId': 'history'});
 
@@ -95,6 +100,22 @@ void main() {
     expect(frames.map((f) => (f['type'], f['streamId'])), [('item', 'history'), ('item', 'other'), ('end', 'history')]);
     expect(frames.first['value'], rows);
     expect(frames[1]['value'], 'after snapshot');
+  });
+
+  test('a medium follow frame yields before delivery', () async {
+    final frames = <Map<String, Object?>>[];
+    final delivered = Completer<void>();
+    link.start(
+      onFrame: (frame) {
+        frames.add(frame);
+        delivered.complete();
+      },
+      onLost: (_, _) => fail('unexpected link loss'),
+    );
+    socket.incoming.add(medium);
+    expect(frames, isEmpty, reason: 'a 300 KiB frame is decoded off the UI isolate');
+    await delivered.future;
+    expect((frames.single['value'] as String).length, 300 * 1024);
   });
 
   test('local close retires a decoding frame and its queued successor', () async {

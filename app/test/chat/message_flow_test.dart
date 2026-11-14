@@ -57,7 +57,9 @@ Future<ChatHarness> _pump(
   await pumpFrames(tester);
   final chat = harness.controllers['s1']!;
   chat.branchPoints[2] = 7;
-  chat.emit(chat.state.copyWith());
+  // Branchability is controller data outside ChatState. A real transcript
+  // change also changes a row input, so give the list one to rebuild on.
+  chat.emit(chat.state.copyWith(commands: List.of(chat.state.commands)));
   await pumpFrames(tester);
   return harness;
 }

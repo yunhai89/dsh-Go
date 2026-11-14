@@ -114,6 +114,98 @@ void main() {
     expect(transcript.running, isFalse);
   });
 
+  test('a resync that repeats the held window keeps rendered items and traces', () {
+    final transcript = ChatTranscript();
+    final events = follow('follow_reply_ok.jsonl');
+    events.forEach(transcript.apply);
+    final first = events.first as SessionSnapshotEvent;
+    final durable = events.whereType<SessionLogEvent>().toList();
+    final items = transcript.items;
+    final turns = transcript.turns;
+
+    transcript.apply(
+      SessionSnapshotEvent(
+        sessionId: first.sessionId,
+        header: first.header,
+        cursor: durable.last.seq,
+        events: [...first.events, ...durable],
+        hasMore: false,
+        projections: first.projections,
+        assistantRevision: 0,
+        isResync: true,
+      ),
+    );
+
+    expect(identical(transcript.items, items), isTrue);
+    expect(identical(transcript.turns, turns), isTrue);
+  });
+
+  test('a resync folds only newly appended durable events', () {
+    final transcript = ChatTranscript();
+    final events = follow('follow_reply_ok.jsonl');
+    events.forEach(transcript.apply);
+    final first = events.first as SessionSnapshotEvent;
+    final durable = events.whereType<SessionLogEvent>().toList();
+    final before = transcript.items;
+    final appended = SessionLogEvent.fromJson({
+      'seq': durable.last.seq + 1,
+      'time': 1700000000000,
+      'type': 'future/unknown',
+      'data': {'value': 1},
+    });
+
+    transcript.apply(
+      SessionSnapshotEvent(
+        sessionId: first.sessionId,
+        header: first.header,
+        cursor: appended.seq,
+        events: [...first.events, ...durable, appended],
+        hasMore: false,
+        projections: first.projections,
+        assistantRevision: 0,
+        isResync: true,
+      ),
+    );
+
+    expect(
+      identical(transcript.items, before),
+      isTrue,
+      reason: 'the fold stays incremental; the ignored event adds no row',
+    );
+    expect(transcript.newestSeq, appended.seq);
+  });
+
+  test('a resync that rewrites a durable event takes the full rebuild path', () {
+    final transcript = ChatTranscript();
+    final events = follow('follow_reply_ok.jsonl');
+    events.forEach(transcript.apply);
+    final first = events.first as SessionSnapshotEvent;
+    final durable = events.whereType<SessionLogEvent>().toList();
+    final title = transcript.items;
+    final rewritten = SessionLogEvent.fromJson({
+      'seq': durable.first.seq,
+      'time': durable.first.time.millisecondsSinceEpoch,
+      'type': 'future/unknown',
+      'data': {'value': 'replacement'},
+    });
+
+    transcript.apply(
+      SessionSnapshotEvent(
+        sessionId: first.sessionId,
+        header: first.header,
+        cursor: durable.last.seq,
+        events: [rewritten, ...durable.skip(1)],
+        hasMore: false,
+        projections: first.projections,
+        assistantRevision: 0,
+        isResync: true,
+      ),
+    );
+
+    expect(identical(transcript.items, title), isFalse, reason: 'replacement invalidates the fold');
+    expect(transcript.items, hasLength(title.length));
+  });
+
   test('cancelled turn shows the interrupted prefix and a stop notice', () {
     final transcript = ChatTranscript();
     follow('follow_cancel.jsonl').forEach(transcript.apply);

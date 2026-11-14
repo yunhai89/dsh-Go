@@ -311,18 +311,48 @@ class ChatTranscript {
   bool apply(DshEvent event) {
     switch (event) {
       case SessionSnapshotEvent():
-        if (!event.isResync) _log.clear();
+        final previousLast = _log.lastKey();
+        final full = !event.isResync;
+        if (full) _log.clear();
         header = event.header;
         projections = event.projections;
         _inbox = projections.inbox;
         cursor = event.cursor;
-        if (!event.isResync) hasMoreHistory = event.hasMore;
-        _drafts.clear();
+        if (full) hasMoreHistory = event.hasMore;
         _runningOverride = null;
+        // A resync normally repeats the window already held plus a few events.
+        // Replacing an equal event by `seq` keeps the fold valid; a rewritten
+        // event, a gap below the newest seq, or a full snapshot rebuilds it.
+        final added = <SessionLogEvent>[];
+        var unchanged = true;
         for (final e in event.events) {
-          _log[e.seq] = e;
+          final previous = _log[e.seq];
+          if (previous == null) {
+            _log[e.seq] = e;
+            added.add(e);
+          } else if (!_sameDurableEvent(previous, e)) {
+            _log[e.seq] = e;
+            unchanged = false;
+          }
         }
-        _recomputeTitle();
+        var rebuild = full || !unchanged;
+        if (!rebuild && added.isNotEmpty) {
+          added.sort((a, b) => a.seq.compareTo(b.seq));
+          var expected = (previousLast ?? -1) + 1;
+          for (final e in added) {
+            if (e.seq != expected++) {
+              rebuild = true;
+              break;
+            }
+          }
+        }
+        if (rebuild) {
+          _recomputeTitle();
+        } else if (added.any((e) => e is TitleChangedEvent)) {
+          _recomputeTitle();
+        }
+        final hadDrafts = _drafts.isNotEmpty;
+        _drafts.clear();
         final active = event.activeAttempt;
         if (active != null) {
           final draft = _Draft(active.attemptId, active.turn, active.step, active.startedAfterSeq);
@@ -332,7 +362,18 @@ class ChatTranscript {
           draft.nextIndex = active.nextIndex;
           _drafts[active.attemptId] = draft;
         }
-        _logChanged();
+        if (rebuild) {
+          _logChanged();
+        } else {
+          for (final e in added) {
+            _logChanged(appended: e);
+          }
+          // Projections are authoritative on every snapshot, even when no
+          // durable event was new.
+          _todos = null;
+          _goal = null;
+          if (hadDrafts || active != null) _items = null;
+        }
         return true;
       case SessionLogEvent():
         // The follow cursor may exceed (or trail) the loaded log after snapshots.
@@ -449,6 +490,11 @@ class ChatTranscript {
     return fold.build(_approvals.values);
   }
 
+  /// A resync may repeat a durable event with the same wire content. Durable
+  /// events are immutable, so equal means the folded state can stay.
+  static bool _sameDurableEvent(SessionLogEvent a, SessionLogEvent b) =>
+      a.type == b.type && a.time == b.time && _jsonEquals(a.data, b.data);
+
   static NoticeChatItem? _turnNotice(int seq, TurnEndReason reason) => switch (reason.kind) {
     'completed' => null,
     'aborted' => NoticeChatItem(seq: seq, kind: 'aborted', text: 'Stopped'),
@@ -463,6 +509,26 @@ class ChatTranscript {
     'interrupted' => NoticeChatItem(seq: seq, kind: 'interrupted', text: 'Interrupted (Host restarted)'),
     _ => null,
   };
+}
+
+/// Structural equality for decoded JSON values (maps, lists, scalars).
+bool _jsonEquals(Object? a, Object? b) {
+  if (identical(a, b)) return true;
+  if (a is Map && b is Map) {
+    if (a.length != b.length) return false;
+    for (final entry in a.entries) {
+      if (!b.containsKey(entry.key) || !_jsonEquals(entry.value, b[entry.key])) return false;
+    }
+    return true;
+  }
+  if (a is List && b is List) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!_jsonEquals(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  return a == b;
 }
 
 // Folded prefix of the log, extended by strictly appended events. Tools stay global:

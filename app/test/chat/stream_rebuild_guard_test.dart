@@ -134,36 +134,40 @@ class _Guard {
   ChatState get state => container.read(chatProvider(_session));
 
   /// The history, with [queued] waiting in the inbox for the next turn.
-  void snapshot({List<String> queued = const []}) {
+  void snapshot({List<String> queued = const [], bool resync = false}) {
     client.events.add(
-      parseFollowFrame(_session, {
-        'type': 'snapshot',
-        'header': {'id': _session, 'createdAt': 1792700000000},
-        'cursor': seq,
-        'records': [
-          for (final event in history) {'type': 'event', 'event': event},
-        ],
-        'hasMore': false,
-        'projections': {
-          'asOfSeq': seq,
-          'values': {
-            'inbox': {
-              'next-turn': [
-                for (final (i, text) in queued.indexed)
-                  {
-                    'id': 'inbox-$i',
-                    'role': 'user',
-                    'content': [
-                      {'type': 'text', 'text': text},
-                    ],
-                    'source': {'kind': 'user'},
-                  },
-              ],
-              'next-step': <Object?>[],
+      parseFollowFrame(
+        _session,
+        {
+          'type': 'snapshot',
+          'header': {'id': _session, 'createdAt': 1792700000000},
+          'cursor': seq,
+          'records': [
+            for (final event in history) {'type': 'event', 'event': event},
+          ],
+          'hasMore': false,
+          'projections': {
+            'asOfSeq': seq,
+            'values': {
+              'inbox': {
+                'next-turn': [
+                  for (final (i, text) in queued.indexed)
+                    {
+                      'id': 'inbox-$i',
+                      'role': 'user',
+                      'content': [
+                        {'type': 'text', 'text': text},
+                      ],
+                      'source': {'kind': 'user'},
+                    },
+                ],
+                'next-step': <Object?>[],
+              },
             },
           },
         },
-      }),
+        isResync: resync,
+      ),
     );
     client.events.add(const SessionStatusEvent(_session, true));
   }
@@ -284,6 +288,28 @@ void main() {
     await g.settle(tester);
     expect(g.state.items.whereType<AssistantChatItem>().last.text, '回答继续');
     expect(items.whereType<AssistantChatItem>().last.text, '回答');
+    await g.unmount(tester);
+  });
+
+  testWidgets('a resync that repeats the held history rebuilds no rows', (tester) async {
+    final g = _Guard();
+    addTearDown(g.dispose);
+    await g.mount(tester);
+    g.snapshot();
+    await g.settle(tester);
+    expect(g.state.items, isNotEmpty);
+
+    // A reconnect marks the chat syncing, then the replacement snapshot ends
+    // it. The rows themselves stay as they were.
+    g.client.events.add(SessionSyncEvent(SessionFollowEpoch()));
+    await tester.pump();
+    final counts = await _count(() async {
+      g.snapshot(resync: true);
+      await g.settle(tester);
+    });
+
+    expect(counts.done, 0, reason: 'unchanged history must keep every built row');
+    expect(counts.derivations, 0, reason: 'the rows are made of the same values');
     await g.unmount(tester);
   });
 

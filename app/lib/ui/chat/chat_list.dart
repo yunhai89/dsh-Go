@@ -600,7 +600,7 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
         for (final turn in s.turns)
           if (turn.running) turn.startSeq,
     };
-    final changed = !identical(s, _builtState);
+    final previousState = _builtState;
     _builtState = s;
     final inputs = (
       foldTurns,
@@ -615,9 +615,9 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
       s.turns,
     );
     if (_rowsInputs == inputs) {
-      // Nothing the rows are made of changed, but what they read from the
-      // controller (branch points, reply ids) may have.
-      if (changed) _built.clear();
+      // Everything a row is made of and reads from the controller is in the
+      // record. Sync flags and other page-only state must not drop built rows.
+      if (previousState != null && s.loading != previousState.loading) _built.clear();
       return;
     }
     _rowsInputs = inputs;

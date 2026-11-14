@@ -281,8 +281,9 @@ class _WebSocketMuxLink implements DshMuxLink {
 
 FutureOr<Object?> _decodeMuxFrame(Object? data) {
   if (data is! String) throw const DshProtocolException('binary WebSocket message');
-  // Large follow snapshots must not block input while decoding. Small control
-  // frames stay synchronous; asyncMap preserves their order around the worker.
-  if (data.length < 1024 * 1024) return tryDecodeJson(data);
+  // Large follow snapshots must not block input while decoding. Ordinary
+  // control frames stay synchronous; asyncMap preserves their order around the
+  // worker. A 256 KiB snapshot already costs a visible slice of a frame.
+  if (data.length < 256 * 1024) return tryDecodeJson(data);
   return Isolate.run(() => tryDecodeJson(data), debugName: 'dsh-mux-json');
 }

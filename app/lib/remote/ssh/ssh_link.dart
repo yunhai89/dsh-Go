@@ -67,13 +67,21 @@ class SshHostLink implements HostLink {
     Stream<void>? kicks,
     Backoff? backoff,
     this.remoteEnvironment = const {},
-    this.keepAliveInterval = const Duration(seconds: 15),
-    this.keepAliveTimeout = const Duration(seconds: 10),
+    this.keepAliveInterval = const Duration(seconds: 10),
+    this.keepAliveTimeout = const Duration(seconds: 8),
     this.tunnelProbeTimeout = const Duration(seconds: 10),
     this.retryFirstOpen = true,
   }) : _transportFactory = transportFactory ?? DartSshTransport.connect,
        _connectClient = connectClient ?? _defaultConnector,
-       _backoff = backoff ?? Backoff() {
+       // A brief drop should be back within a second; later attempts still
+       // spread out so a weak or offline network is not hammered.
+       _backoff =
+           backoff ??
+           Backoff(
+             initial: const Duration(milliseconds: 500),
+             max: const Duration(seconds: 20),
+             maxAttempts: 8,
+           ) {
     _kickSub = kicks?.listen((_) => kick());
   }
 
@@ -109,6 +117,10 @@ class SshHostLink implements HostLink {
   DshClient? _client;
   Future<DshClient>? _opening;
   Timer? _keepAlive;
+  Future<void>? _keepAlivePending;
+  Future<void>? _kickCheck;
+  Future<DshClient>? _recovery;
+  DateTime? _lastPongAt;
   int _missedPings = 0;
   bool _closed = false;
   bool _recovering = false;
@@ -159,6 +171,9 @@ class SshHostLink implements HostLink {
     if (_closed) return Future.error(StateError('link closed'));
     final client = _client;
     if (client != null && _status.isConnected) return Future.value(client);
+    // A reconnect already in flight owns the transport; joining it avoids a
+    // second SSH session racing the first into `_transport`/`_forwarder`.
+    if (_recovery case final recovery?) return recovery;
     return _opening ??= _openFirst().whenComplete(() => _opening = null);
   }
 
@@ -248,6 +263,7 @@ class SshHostLink implements HostLink {
     at(HostLinkStep.startDsh, detail: appL10n.remoteCheckingDsh);
     try {
       final RemoteDshEndpoint endpoint;
+      var tunnelChecked = false;
       if (_config.dshMode == SshDshMode.attachOnly) {
         final token = secrets.attachToken?.trim();
         if (_config.remotePort < 1 || _config.remotePort > 65535 || token == null || token.isEmpty) {
@@ -256,38 +272,50 @@ class SshHostLink implements HostLink {
         // Attach-only never executes a remote command or touches managed state.
         endpoint = RemoteDshEndpoint(port: _config.remotePort, token: token, reused: true);
       } else {
-        endpoint = await RemoteDshBootstrap(
-          transport,
-          launchCommand: _config.launchCommand,
-          workingDirectory: _config.workingDirectory,
-          environment: remoteEnvironment,
-        ).ensureRunning(
-          forceRestart: restart,
-          onDetail: (d) => at(HostLinkStep.startDsh, detail: d),
-        );
+        // A brief SSH drop usually leaves `dsh web` untouched. Probe the
+        // cached loopback first: it costs one channel round trip, while the
+        // bootstrap probe also starts a remote login shell.
+        final cached = !restart && _client != null && !_needsRelogin ? _endpoint : null;
+        if (cached != null && await _tunnelAnswers(transport, cached.port)) {
+          endpoint = cached;
+          tunnelChecked = true;
+          at(HostLinkStep.startDsh, detail: appL10n.remoteBootstrapReusePort(cached.port));
+        } else {
+          endpoint = await RemoteDshBootstrap(
+            transport,
+            launchCommand: _config.launchCommand,
+            workingDirectory: _config.workingDirectory,
+            environment: remoteEnvironment,
+          ).ensureRunning(
+            forceRestart: restart,
+            onDetail: (d) => at(HostLinkStep.startDsh, detail: d),
+          );
+        }
       }
       _checkOpen();
 
       at(HostLinkStep.tunnel, detail: '127.0.0.1:${endpoint.port}');
-      try {
-        // Destroy a late channel too: Future.timeout does not cancel the
-        // underlying SSH channel-open request.
-        await transport
-            .openTunnel('127.0.0.1', endpoint.port)
-            .then((channel) => channel.destroy())
-            .timeout(tunnelProbeTimeout);
-      } catch (e) {
-        throw HostLinkError(
-          HostLinkErrorKind.tunnelFailed,
-          appL10n.remoteErrDshPort,
-          detail: '$e',
-          retryable: _config.dshMode == SshDshMode.managed,
-          diagnosticCode: e is TimeoutException
-              ? HostLinkDiagnosticCode.sshTunnelTimedOut
-              : e is TunnelRefused
-              ? HostLinkDiagnosticCode.sshTunnelRefused
-              : HostLinkDiagnosticCode.sshTunnelFailed,
-        );
+      if (!tunnelChecked) {
+        try {
+          // Destroy a late channel too: Future.timeout does not cancel the
+          // underlying SSH channel-open request.
+          await transport
+              .openTunnel('127.0.0.1', endpoint.port)
+              .then((channel) => channel.destroy())
+              .timeout(tunnelProbeTimeout);
+        } catch (e) {
+          throw HostLinkError(
+            HostLinkErrorKind.tunnelFailed,
+            appL10n.remoteErrDshPort,
+            detail: '$e',
+            retryable: _config.dshMode == SshDshMode.managed,
+            diagnosticCode: e is TimeoutException
+                ? HostLinkDiagnosticCode.sshTunnelTimedOut
+                : e is TunnelRefused
+                ? HostLinkDiagnosticCode.sshTunnelRefused
+                : HostLinkDiagnosticCode.sshTunnelFailed,
+          );
+        }
       }
       _checkOpen();
       final previous = _endpoint;
@@ -379,6 +407,20 @@ class SshHostLink implements HostLink {
     });
   }
 
+  /// Whether the remote loopback port accepts a forwarding channel. A late
+  /// success is closed rather than reused.
+  Future<bool> _tunnelAnswers(SshTransport transport, int port, {Duration? timeout}) async {
+    try {
+      await transport
+          .openTunnel('127.0.0.1', port)
+          .then((channel) => channel.destroy())
+          .timeout(timeout ?? tunnelProbeTimeout);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// SSH answers but the mux cannot get through: reconnect if the DSH port
   /// stops answering. Managed mode can replace a dead process; attach-only
   /// reconnects to the same endpoint without starting anything.
@@ -386,15 +428,10 @@ class SshHostLink implements HostLink {
     final transport = _transport;
     final endpoint = _endpoint;
     if (transport == null || endpoint == null || !_status.isConnected) return;
-    try {
-      // A channel that opens after the timeout is still closed.
-      final probe = transport.openTunnel('127.0.0.1', endpoint.port).then((channel) => channel.destroy());
-      await probe.timeout(const Duration(seconds: 5));
-    } catch (_) {
-      if (!identical(transport, _transport)) return;
-      _backoff.reset();
-      _lost(HostLinkError(HostLinkErrorKind.dshStartFailed, appL10n.remoteErrDshStopped, retryable: true));
-    }
+    if (await _tunnelAnswers(transport, endpoint.port, timeout: const Duration(seconds: 5))) return;
+    if (!identical(transport, _transport)) return;
+    _backoff.reset();
+    _lost(HostLinkError(HostLinkErrorKind.dshStartFailed, appL10n.remoteErrDshStopped, retryable: true));
   }
 
   void _installTransport(SshTransport transport) {
@@ -455,10 +492,15 @@ class SshHostLink implements HostLink {
   void _startKeepAlive() {
     _keepAlive?.cancel();
     _missedPings = 0;
+    _lastPongAt = DateTime.now();
     _keepAlive = Timer.periodic(keepAliveInterval, (_) => unawaited(_keepAliveTick()));
   }
 
-  Future<void> _keepAliveTick() async {
+  Future<void> _keepAliveTick() {
+    return _keepAlivePending ??= _runKeepAliveTick().whenComplete(() => _keepAlivePending = null);
+  }
+
+  Future<void> _runKeepAliveTick() async {
     if (!await _ping(keepAliveTimeout)) return;
     final mux = _client?.mux.state;
     if (mux == DshConnectionState.connecting || mux == DshConnectionState.reconnecting) await _probeDsh();
@@ -470,6 +512,7 @@ class SshHostLink implements HostLink {
     try {
       await transport.ping(timeout: timeout);
       _missedPings = 0;
+      _lastPongAt = DateTime.now();
       return true;
     } catch (_) {
       _missedPings++;
@@ -495,7 +538,36 @@ class SshHostLink implements HostLink {
   }
 
   /// Reconnect loop with backoff. Resolves with the (possibly new) client.
-  Future<DshClient> _recover(HostLinkError reason) async {
+  ///
+  /// Only one loop may run: a network kick, a keepalive failure and the first
+  /// open can all report the same loss, and two concurrent SSH sessions would
+  /// overwrite each other's transport.
+  Future<DshClient> _recover(HostLinkError reason) {
+    if (_recovery case final recovery?) return recovery;
+    // Publish the future before the loop emits its first status: a listener
+    // may call open() from inside that broadcast, which must join this attempt
+    // instead of starting another SSH session.
+    final completer = Completer<DshClient>();
+    final tracked = completer.future;
+    _recovery = tracked;
+    unawaited(
+      _recoverLoop(reason)
+          .then<void>(
+            (client) {
+              if (!completer.isCompleted) completer.complete(client);
+            },
+            onError: (Object error, StackTrace stack) {
+              if (!completer.isCompleted) completer.completeError(error, stack);
+            },
+          )
+          .whenComplete(() {
+            if (identical(_recovery, tracked)) _recovery = null;
+          }),
+    );
+    return tracked;
+  }
+
+  Future<DshClient> _recoverLoop(HostLinkError reason) async {
     _recovering = true;
     var last = reason;
     try {
@@ -567,21 +639,10 @@ class SshHostLink implements HostLink {
       case HostLinkPhase.connected:
         // Network changed under us: a quick ping tells whether the socket
         // survived; a dead one triggers reconnect without waiting for the
-        // regular keepalive.
-        unawaited(() async {
-          final alive = await _ping(const Duration(seconds: 5));
-          if (!alive) {
-            _backoff.reset();
-            _lost(
-              HostLinkError(
-                HostLinkErrorKind.unreachable,
-                appL10n.remoteErrSshNetworkChanged,
-                retryable: true,
-                diagnosticCode: HostLinkDiagnosticCode.sshKickProbeFailed,
-              ),
-            );
-          }
-        }());
+        // regular keepalive. If the phone was suspended long enough for the
+        // keepalive to miss, also reopen the mux now instead of waiting for
+        // its own backoff (the SSH socket may still be fine).
+        _kickCheck ??= _runKickCheck().whenComplete(() => _kickCheck = null);
       case HostLinkPhase.reconnecting:
         _backoff.reset();
         _delay.skip();
@@ -590,6 +651,32 @@ class SshHostLink implements HostLink {
       case HostLinkPhase.idle || HostLinkPhase.connecting:
         break;
     }
+  }
+
+  Future<void> _runKickCheck() async {
+    final client = _client;
+    if (client != null) {
+      final mux = client.mux.state;
+      final lastPong = _lastPongAt;
+      final suspended =
+          lastPong == null || DateTime.now().difference(lastPong) > keepAliveInterval + keepAliveInterval;
+      if (suspended || mux == DshConnectionState.connecting || mux == DshConnectionState.reconnecting) {
+        // Drop the stale WebSocket so the follow streams reopen immediately;
+        // the mux waits for a new transport if SSH has to reconnect too.
+        client.mux.reconnect();
+      }
+    }
+    final alive = await _ping(const Duration(seconds: 5));
+    if (alive || _closed) return;
+    _backoff.reset();
+    _lost(
+      HostLinkError(
+        HostLinkErrorKind.unreachable,
+        appL10n.remoteErrSshNetworkChanged,
+        retryable: true,
+        diagnosticCode: HostLinkDiagnosticCode.sshKickProbeFailed,
+      ),
+    );
   }
 
   @override

@@ -383,6 +383,53 @@ void main() {
     expect(server.remote.launches, 1, reason: 'reused the running dsh');
   });
 
+  test('an SSH drop reuses the cached endpoint without a bootstrap probe', () async {
+    final l = link();
+    await l.open();
+    final connected = nextStatus(l, (s) => s.isConnected, what: 'SSH 断线后重连');
+    server.last.drop();
+    await connected;
+
+    expect(server.transports, hasLength(2));
+    expect(server.last.scripts, isEmpty, reason: 'cached loopback answered; no remote login shell needed');
+    expect(server.last.tunnels, contains(('127.0.0.1', server.remote.port)));
+    expect(server.remote.launches, 1);
+  });
+
+  test('a cached endpoint that stopped answering falls back to bootstrap', () async {
+    final l = link();
+    await l.open();
+    server.remote.tunnelErrors.add(const TunnelRefused());
+    final connected = nextStatus(l, (s) => s.isConnected, what: '缓存端口失效后重新探测');
+    server.last.drop();
+    await connected;
+
+    expect(server.last.scripts, isNotEmpty, reason: 'the dead cached port needs the managed probe');
+    expect(server.remote.launches, 1, reason: 'the live dsh process was reused');
+  });
+
+  test('open during backoff joins the one recovery attempt', () async {
+    final l = link(
+      backoff: Backoff(
+        initial: const Duration(milliseconds: 200),
+        max: const Duration(milliseconds: 200),
+        maxAttempts: 3,
+      ),
+    );
+    await l.open();
+    final reconnecting = nextStatus(l, (s) => s.phase == HostLinkPhase.reconnecting, what: 'SSH 开始退避');
+    server.last.drop();
+    await reconnecting;
+    final connects = server.connects.length;
+
+    final first = l.open();
+    final second = l.open();
+    expect(identical(first, second), isTrue);
+    await Future.wait([first, second]);
+    expect(server.connects, hasLength(connects + 1));
+    expect(l.status.isConnected, isTrue);
+  });
+
   test('remote dsh restarted: logs in again and publishes the new client', () async {
     final l = link();
     final first = await l.open();

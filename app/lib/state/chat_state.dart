@@ -1187,8 +1187,8 @@ class ChatController extends Notifier<ChatState> {
       resyncing: state.resyncing,
       stopping: running && state.stopping,
       title: _transcript.title,
-      approvals: _transcript.pendingApprovals.values.toList(),
-      questions: _transcript.pendingQuestions.values.toList(),
+      approvals: _keepPreviousList(state.approvals, _transcript.pendingApprovals.values.toList()),
+      questions: _keepPreviousList(state.questions, _transcript.pendingQuestions.values.toList()),
       hasMoreHistory: _transcript.hasMoreHistory,
       loading: false,
       loadingOlder: state.loadingOlder,
@@ -1198,15 +1198,27 @@ class ChatController extends Notifier<ChatState> {
       notice: freshSnapshot ? null : state.notice,
       connection: _transcript.connectionState,
       model: _model,
-      pending: pending,
+      pending: _keepPreviousList(state.pending, pending),
       autoApprove: _autoApprove,
       autoAnswered: _autoAnswered,
-      commands: _commandList(),
+      commands: _keepPreviousList(state.commands, _commandList()),
       turns: _transcript.turns,
       todos: _transcript.todos,
       goal: _transcript.goal,
       clockSkew: _skew ?? Duration.zero,
     );
+  }
+
+  /// Element-wise identity reuse for the small lists that drive row structure.
+  /// A sync-flag-only publish then leaves them untouched, so the list can keep
+  /// its built rows instead of deriving and rebuilding every one.
+  static List<T> _keepPreviousList<T>(List<T> previous, List<T> next) {
+    if (identical(previous, next)) return previous;
+    if (previous.length != next.length) return next;
+    for (var i = 0; i < next.length; i++) {
+      if (!identical(previous[i], next[i])) return next;
+    }
+    return previous;
   }
 
   /// Our pending prompts with their inbox slot, plus prompts waiting in the
