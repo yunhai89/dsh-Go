@@ -394,6 +394,7 @@ class _ComposerState extends State<Composer> with SingleTickerProviderStateMixin
       kind: PerchKind.composer,
       child: _ComposerGlass(
         open: widget.footer == null ? null : _open,
+        focusNode: widget.focusNode,
         child: ListenableBuilder(
           // The editor listens to text, selection and composing changes itself.
           // Its surrounding controls only need the draft's empty/nonempty edge.
@@ -636,25 +637,50 @@ class _ComposerState extends State<Composer> with SingleTickerProviderStateMixin
 /// The composer's glass. With [open], its corners tighten as the composer opens, from
 /// the capsule into a rounded rectangle.
 class _ComposerGlass extends StatelessWidget {
-  const _ComposerGlass({required this.open, required this.child});
+  const _ComposerGlass({required this.open, this.focusNode, required this.child});
 
   final Animation<double>? open;
+  final FocusNode? focusNode;
   final Widget child;
 
   static const _opened = BorderRadius.all(Radius.circular(AppShape.lg));
 
   @override
   Widget build(BuildContext context) {
-    final open = this.open;
-    if (open == null) return GlassSurface(tier: GlassTier.chrome, borderRadius: AppShape.radiusXl, child: child);
-    return AnimatedBuilder(
-      animation: open,
-      builder: (context, child) => GlassSurface(
-        tier: GlassTier.chrome,
-        borderRadius: BorderRadius.lerp(AppShape.radiusXl, _opened, open.value),
-        child: child,
-      ),
+    final node = focusNode;
+    if (node == null) return _glass(context, focused: false, child: child);
+    return ListenableBuilder(
+      listenable: node,
+      builder: (context, child) => _glass(context, focused: node.hasFocus, child: child!),
       child: child,
+    );
+  }
+
+  Widget _glass(BuildContext context, {required bool focused, required Widget child}) {
+    final open = this.open;
+    final colors = Theme.of(context).colorScheme;
+    Widget surface(double t) => GlassSurface(
+      tier: GlassTier.chrome,
+      borderRadius: BorderRadius.lerp(AppShape.radiusXl, _opened, t),
+      child: child,
+    );
+    final glass = open == null
+        ? surface(0)
+        : AnimatedBuilder(animation: open, builder: (context, _) => surface(open.value));
+    // 聚焦时两圈很浅的主色阴影咬住玻璃边缘,不加 outline。
+    final radius = open == null ? AppShape.radiusXl : BorderRadius.lerp(AppShape.radiusXl, _opened, open.value);
+    return AnimatedContainer(
+      duration: AppMotion.of(context, AppMotion.quick),
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        boxShadow: focused
+            ? [
+                BoxShadow(color: colors.primary.withValues(alpha: 0.16), spreadRadius: 1.2),
+                BoxShadow(color: colors.primary.withValues(alpha: 0.10), blurRadius: 16, spreadRadius: 3),
+              ]
+            : const [],
+      ),
+      child: glass,
     );
   }
 }

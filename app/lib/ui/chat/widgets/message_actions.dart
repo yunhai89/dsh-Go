@@ -80,10 +80,13 @@ class ReplyActionRow extends StatefulWidget {
 class _ReplyActionRowState extends State<ReplyActionRow> {
   bool _copied = false;
 
+  /// The check stays long enough to read, then fades back on its own.
+  static const _copiedFor = Duration(milliseconds: 2500);
+
   void _copy() {
     copyMessage(context, widget.text(), toast: false);
     setState(() => _copied = true);
-    Future.delayed(const Duration(milliseconds: 1400), () {
+    Future.delayed(_copiedFor, () {
       if (mounted) setState(() => _copied = false);
     });
   }

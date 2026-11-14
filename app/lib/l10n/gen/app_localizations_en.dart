@@ -4921,6 +4921,10 @@ class L10nEn extends L10n {
   String get chatErrModelConnection => 'Couldn’t reach the model service';
 
   @override
+  String get chatTransportHostHint =>
+      'On an SSH host, check that the host itself can reach the model service: DNS, IPv6/egress, or an HTTPS_PROXY set for the host. The phone’s network or proxy does not apply to the remote host.';
+
+  @override
   String get chatErrModelEmpty => 'The model returned no content';
 
   @override

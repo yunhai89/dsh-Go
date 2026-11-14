@@ -4628,6 +4628,9 @@ class L10nZh extends L10n {
   String get chatErrModelConnection => '没能连上模型服务';
 
   @override
+  String get chatTransportHostHint => '若使用 SSH 主机，请先在主机上确认能访问模型服务：检查 DNS、IPv6/出网，或为主机设置 HTTPS_PROXY。手机的网络或代理不会作用到远端。';
+
+  @override
   String get chatErrModelEmpty => '模型没有返回内容';
 
   @override

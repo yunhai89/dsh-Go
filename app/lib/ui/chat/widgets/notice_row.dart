@@ -99,6 +99,7 @@ class _NoticeRowState extends State<NoticeRow> {
     final lapsed = isError ? lapsedSubscription(item.failure, item.text) : null;
     final (icon, text) = _content(lapsed);
     final style = StreamRow.detail(context)?.copyWith(height: 1.45, color: isError ? dsh.danger : null);
+    final textStyle = item.kind == 'retry' && style != null ? AppType.tabular(style) : style;
 
     // 一行最多一个键:登录失效、缺 Key 有自己的去处,其余用列表给的。
     final NoticeAction? action;
@@ -147,7 +148,7 @@ class _NoticeRowState extends State<NoticeRow> {
                 // 文字首行与 24 的图形格竖直居中。
                 child: Padding(
                   padding: const EdgeInsets.only(top: 2.5),
-                  child: Text(text, style: style),
+                  child: Text(text, style: textStyle),
                 ),
               ),
               AnimatedSwitcher(
@@ -167,7 +168,21 @@ class _NoticeRowState extends State<NoticeRow> {
           open: _expanded,
           child: Padding(
             padding: const EdgeInsets.only(left: StreamRow.indent, bottom: 8),
-            child: SelectableText(details ?? '', style: StreamRow.detail(context)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SelectableText(details ?? '', style: StreamRow.detail(context)),
+                if (failure?.code == 'TRANSPORT') ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    l10n.chatTransportHostHint,
+                    style: StreamRow.detail(context)
+                        ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant, height: 1.5),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ],
