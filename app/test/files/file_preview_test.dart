@@ -36,6 +36,14 @@ Future<void> _scrollToEnd(WidgetTester tester) async {
   }
 }
 
+/// CSV/TSV parsing runs on a worker isolate; give it real time, then draw.
+Future<void> _waitFor(WidgetTester tester, Finder finder) async {
+  for (var i = 0; i < 40 && finder.evaluate().isEmpty; i++) {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await pumpFrames(tester, 2);
+  }
+}
+
 String _lines(int n) => [for (var i = 1; i <= n; i++) 'line $i'].join('\n');
 
 void main() {
@@ -89,6 +97,7 @@ void main() {
 
   testWidgets('CSV: a table with the header pinned; a cell shows in full', (tester) async {
     final ws = await _open(tester, 'out/sales.csv');
+    await _waitFor(tester, find.byType(SheetTable));
     expect(ws.calls, contains('readBytes out/sales.csv'));
     expect(find.byType(SheetTable), findsOneWidget);
     for (final cell in ['地区', '一月', '华东', '132', '华南']) {
@@ -103,9 +112,25 @@ void main() {
     expect(find.text('华南'), findsNWidgets(2));
   });
 
+  testWidgets('a wide table builds only the columns near the viewport', (tester) async {
+    final lines = [
+      [for (var c = 0; c < 60; c++) 'h$c'].join(','),
+      for (var r = 0; r < 8; r++) [for (var c = 0; c < 60; c++) 'r$r-c$c'].join(','),
+    ];
+    final ws = sampleWorkspace()..write('wide.csv', lines.join('\n'));
+    await _open(tester, 'wide.csv', workspace: ws);
+    await _waitFor(tester, find.byType(SheetTable));
+    expect(find.text('h0'), findsOneWidget);
+    // Far columns are outside the horizontal viewport; building 60 cells per
+    // visible row is what made opening a wide sheet stutter.
+    expect(find.text('h59'), findsNothing);
+    expect(find.text('r0-c59'), findsNothing);
+  });
+
   testWidgets('a CSV that is not a table is shown as text', (tester) async {
     final ws = sampleWorkspace()..write('bad.csv', 'a,"b\nc,d\n');
     await _open(tester, 'bad.csv', workspace: ws);
+    await _waitFor(tester, find.byType(CodeBlock));
     expect(find.byType(SheetTable), findsNothing);
     expect(find.byType(CodeBlock), findsOneWidget);
   });

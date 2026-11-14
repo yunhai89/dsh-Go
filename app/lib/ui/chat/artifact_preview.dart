@@ -1084,6 +1084,27 @@ class _MarkdownDocument extends StatelessWidget {
 /// Parses off the UI isolate.
 List<SheetGrid> _readWorkbook(Uint8List bytes) => parseXlsx(bytes, maxRows: _tableRows);
 
+/// A 2 MiB window of CSV/TSV, parsed off the UI isolate. Exceptions cannot
+/// cross an isolate intact, so the expected format failure comes back as text
+/// and is rethrown on the caller's side.
+({List<SheetGrid>? sheets, String? error}) _readDelimitedWindow(({Uint8List data, bool tsv, bool partial}) window) {
+  try {
+    return (
+      sheets: [
+        parseDelimited(
+          decodeTableText(window.data),
+          delimiter: window.tsv ? '\t' : ',',
+          maxRows: _tableRows,
+          partial: window.partial,
+        ),
+      ],
+      error: null,
+    );
+  } on SheetFormatException catch (error) {
+    return (sheets: null, error: error.message);
+  }
+}
+
 class _TablePreview extends ConsumerStatefulWidget {
   const _TablePreview({
     required this.sessionId,
@@ -1151,9 +1172,13 @@ class _TablePreviewState extends ConsumerState<_TablePreview> {
     if (source == null) throw const ArtifactError('offline');
     final window = await source.readWindow(widget.artifact.path, length: _tableWindow);
     _bytes = window.bytes;
-    final text = decodeTableText(window.data);
-    final tsv = _extensionOf(widget.artifact.path) == 'tsv';
-    return [parseDelimited(text, delimiter: tsv ? '\t' : ',', maxRows: _tableRows, partial: !window.eof)];
+    final outcome = await compute(_readDelimitedWindow, (
+      data: window.data,
+      tsv: _extensionOf(widget.artifact.path) == 'tsv',
+      partial: !window.eof,
+    ));
+    if (outcome.error case final message?) throw SheetFormatException(message);
+    return outcome.sheets!;
   }
 
   Future<List<SheetGrid>> _workbook() async {

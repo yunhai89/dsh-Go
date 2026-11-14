@@ -58,9 +58,12 @@ class _SheetTableState extends State<SheetTable> {
   final _bodyV = ScrollController();
 
   List<double>? _widths;
+  List<double>? _offsets;
   double? _gutter;
   TextScaler? _scaler;
   (int row, int col)? _selected;
+  ({int first, int last})? _shown;
+  double _viewport = 0;
 
   @override
   void initState() {
@@ -69,6 +72,8 @@ class _SheetTableState extends State<SheetTable> {
       if (_headerH.hasClients && _headerH.offset != _bodyH.offset) {
         _headerH.jumpTo(_bodyH.offset);
       }
+      final next = _visibleRange();
+      if (next != _shown) setState(() => _shown = next);
     });
     _bodyV.addListener(() {
       if (_gutterV.hasClients && _gutterV.offset != _bodyV.offset) {
@@ -82,8 +87,29 @@ class _SheetTableState extends State<SheetTable> {
     super.didUpdateWidget(old);
     if (!identical(old.grid, widget.grid)) {
       _widths = null;
+      _offsets = null;
+      _shown = null;
       _selected = null;
     }
+  }
+
+  /// Columns whose cells can touch the viewport, plus one column of lead-in
+  /// and one of overscan. A 200-column table must not build 200 cells for
+  /// every visible row.
+  ({int first, int last}) _visibleRange() {
+    final offsets = _offsets;
+    if (offsets == null || _columns == 0) return (first: 0, last: -1);
+    final start = _bodyH.hasClients ? _bodyH.offset : 0.0;
+    final end = start + (_viewport > 0 ? _viewport : 400);
+    var first = 0;
+    while (first < _columns - 1 && offsets[first + 1] <= start) {
+      first++;
+    }
+    var last = first;
+    while (last < _columns - 1 && offsets[last + 1] < end) {
+      last++;
+    }
+    return (first: math.max(0, first - 1), last: math.min(_columns - 1, last + 1));
   }
 
   @override
@@ -101,6 +127,10 @@ class _SheetTableState extends State<SheetTable> {
       Theme.of(context).textTheme.bodyMedium!.copyWith(fontSize: 13.5, height: 1.3);
 
   /// Column widths from the header and the first rows' text.
+  ///
+  /// A wide table can have 200 columns and thousands of rows. Laying out every
+  /// sampled cell would run tens of thousands of text measurements on the frame
+  /// that opens it, so only the longest few candidates per column are measured.
   void _measure(BuildContext context) {
     final scaler = MediaQuery.textScalerOf(context);
     if (_widths != null && _scaler == scaler) return;
@@ -111,18 +141,42 @@ class _SheetTableState extends State<SheetTable> {
     final sample = math.min(rows.length, 120);
     final painter = TextPainter(textDirection: TextDirection.ltr, maxLines: 1, textScaler: scaler);
     final widths = List<double>.filled(_columns, SheetTable.minColumn);
+    double measured(String text, TextStyle textStyle) {
+      painter.text = TextSpan(text: text.length > 60 ? text.substring(0, 60) : text, style: textStyle);
+      painter.layout();
+      return painter.width;
+    }
+
     for (var c = 0; c < _columns; c++) {
       var widest = 0.0;
-      for (var r = 0; r < sample; r++) {
-        final row = rows[r];
-        final text = c < row.length ? row[c] : '';
-        if (text.isEmpty) continue;
-        painter.text = TextSpan(text: text.length > 60 ? text.substring(0, 60) : text, style: r == 0 ? bold : style);
-        painter.layout();
-        widest = math.max(widest, painter.width);
+      if (rows.isNotEmpty && c < rows.first.length && rows.first[c].isNotEmpty) {
+        widest = measured(rows.first[c], bold);
+      }
+      if (widest < SheetTable.maxColumn) {
+        final candidates = <String>[];
+        for (var r = 1; r < sample; r++) {
+          final row = rows[r];
+          final text = c < row.length ? row[c] : '';
+          if (text.isNotEmpty) candidates.add(text);
+        }
+        // Text widths grow with the amount of text far more reliably than with
+        // glyph count, and the longest two cover the usual narrow/wide mixes.
+        if (candidates.length > 2) {
+          candidates.sort((a, b) => b.length.compareTo(a.length));
+          candidates.length = 2;
+        }
+        for (final text in candidates) {
+          widest = math.max(widest, measured(text, style));
+          if (widest >= SheetTable.maxColumn) break;
+        }
       }
       widths[c] = (widest + SheetTable.cellInset * 2 + 1).clamp(SheetTable.minColumn, SheetTable.maxColumn);
     }
+    final offsets = List<double>.filled(_columns + 1, 0);
+    for (var c = 0; c < _columns; c++) {
+      offsets[c + 1] = offsets[c] + widths[c];
+    }
+    _offsets = offsets;
     painter.text = TextSpan(
       text: '${math.max(rows.length, 1)}',
       style: AppType.tabular(Theme.of(context).textTheme.bodySmall!),
@@ -201,65 +255,83 @@ class _SheetTableState extends State<SheetTable> {
       child: Text(label, maxLines: 1, style: numberStyle),
     );
 
-    final header = rows.isEmpty
-        ? const SizedBox.shrink()
-        : Row(children: [for (var c = 0; c < widths.length; c++) cell(0, c, header: true)]);
+    Widget row(({int first, int last}) visible, int r, {bool header = false}) {
+      final offsets = _offsets!;
+      final leading = offsets[visible.first];
+      final trailing = total - offsets[visible.last + 1];
+      return Row(
+        children: [
+          if (leading > 0) SizedBox(width: leading),
+          for (var c = visible.first; c <= visible.last; c++) cell(r, c, header: header),
+          if (trailing > 0) SizedBox(width: trailing),
+        ],
+      );
+    }
 
-    final table = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ColoredBox(
-          color: headerFill,
-          child: Row(
-            children: [
-              numberCell('1'),
-              Expanded(
-                child: SingleChildScrollView(
-                  controller: _headerH,
-                  scrollDirection: Axis.horizontal,
-                  physics: const NeverScrollableScrollPhysics(),
-                  child: header,
-                ),
+    final table = LayoutBuilder(
+      builder: (context, constraints) {
+        _viewport = math.max(0, constraints.maxWidth - gutter);
+        final visible = _visibleRange();
+        _shown = visible;
+        final header = rows.isEmpty
+            ? const SizedBox.shrink()
+            : SizedBox(width: total, child: row(visible, 0, header: true));
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ColoredBox(
+              color: headerFill,
+              child: Row(
+                children: [
+                  numberCell('1'),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: _headerH,
+                      scrollDirection: Axis.horizontal,
+                      physics: const NeverScrollableScrollPhysics(),
+                      child: header,
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
-                width: gutter,
-                child: ListView.builder(
-                  controller: _gutterV,
-                  physics: const NeverScrollableScrollPhysics(),
-                  padding: EdgeInsets.zero,
-                  itemExtent: SheetTable.rowHeight,
-                  itemCount: body,
-                  itemBuilder: (context, i) => numberCell('${i + 2}', fill: headerFill),
-                ),
-              ),
-              Expanded(
-                child: SingleChildScrollView(
-                  controller: _bodyH,
-                  scrollDirection: Axis.horizontal,
-                  child: SizedBox(
-                    width: total,
+            ),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    width: gutter,
                     child: ListView.builder(
-                      controller: _bodyV,
+                      controller: _gutterV,
+                      physics: const NeverScrollableScrollPhysics(),
                       padding: EdgeInsets.zero,
                       itemExtent: SheetTable.rowHeight,
                       itemCount: body,
-                      itemBuilder: (context, i) =>
-                          Row(children: [for (var c = 0; c < widths.length; c++) cell(i + 1, c)]),
+                      itemBuilder: (context, i) => numberCell('${i + 2}', fill: headerFill),
                     ),
                   ),
-                ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: _bodyH,
+                      scrollDirection: Axis.horizontal,
+                      child: SizedBox(
+                        width: total,
+                        child: ListView.builder(
+                          controller: _bodyV,
+                          padding: EdgeInsets.zero,
+                          itemExtent: SheetTable.rowHeight,
+                          itemCount: body,
+                          itemBuilder: (context, i) => row(visible, i + 1),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ),
-      ],
+            ),
+          ],
+        );
+      },
     );
 
     final selected = _selected;

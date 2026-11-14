@@ -114,31 +114,41 @@ class FilesPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
         if (!file.isFile) return result.error("missing", "no such file", null)
         val name = call.argument<String>("name") ?: file.name
         val mime = mimeOf(call.argument<String>("mime"), name)
-        val uri = try {
-            contentUri(file, name)
-        } catch (e: Exception) {
-            return result.error("failed", e.message, null)
-        }
-        val view = Intent(Intent.ACTION_VIEW)
-            .setDataAndType(uri, mime)
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        view.clipData = ClipData.newRawUri(name, uri)
-        if (view.resolveActivity(context.packageManager) == null) {
-            return result.error("no_app", "no app opens $mime", null)
-        }
-        val launch = if (call.argument<Boolean>("chooser") == true) Intent.createChooser(view, null) else view
-        val host: Activity? = activity?.activity
-        try {
-            if (host != null) {
-                host.startActivity(launch)
-            } else {
-                context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val chooser = call.argument<Boolean>("chooser") == true
+        // contentUri copies a file that falls outside the provider roots. That
+        // copy is O(size); doing it here would block the frame that opens the
+        // file (and every frame until a large copy finishes).
+        thread(name = "dsh-files-open", isDaemon = true) {
+            val resolved = runCatching { contentUri(file, name) }
+            main.post {
+                val uri = resolved.getOrNull()
+                if (uri == null) {
+                    result.error("failed", resolved.exceptionOrNull()?.message, null)
+                    return@post
+                }
+                val view = Intent(Intent.ACTION_VIEW)
+                    .setDataAndType(uri, mime)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                view.clipData = ClipData.newRawUri(name, uri)
+                if (view.resolveActivity(context.packageManager) == null) {
+                    result.error("no_app", "no app opens $mime", null)
+                    return@post
+                }
+                val launch = if (chooser) Intent.createChooser(view, null) else view
+                val host: Activity? = activity?.activity
+                try {
+                    if (host != null) {
+                        host.startActivity(launch)
+                    } else {
+                        context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
+                    result.success(null)
+                } catch (e: ActivityNotFoundException) {
+                    result.error("no_app", e.message, null)
+                } catch (e: Exception) {
+                    result.error("failed", e.message, null)
+                }
             }
-            result.success(null)
-        } catch (e: ActivityNotFoundException) {
-            result.error("no_app", e.message, null)
-        } catch (e: Exception) {
-            result.error("failed", e.message, null)
         }
     }
 

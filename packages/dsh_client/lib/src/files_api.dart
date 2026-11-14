@@ -17,6 +17,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'binary_decode.dart';
 import 'carrier.dart';
 import 'errors.dart';
 import 'json.dart';
@@ -183,7 +184,7 @@ extension DshFilesApi on DshClient {
         }
         expectedVersion ??= version;
       }
-      final data = _bytesOf(value['data']);
+      final data = await _bytesOf(value['data']);
       offset += data.length;
       if (maxBytes != null && offset > maxBytes) {
         throw DshRemoteException('workspace-file/too-large', '"$path" exceeds $maxBytes bytes', {
@@ -214,7 +215,7 @@ extension DshFilesApi on DshClient {
       }, const Duration(minutes: 3)),
     );
     return (
-      pdf: _bytesOf(value['data']),
+      pdf: await _bytesOf(value['data']),
       missingFonts: [for (final font in asListOrEmpty(value['missingFonts'])) ?asString(font)],
     );
   }
@@ -228,10 +229,13 @@ extension DshFilesApi on DshClient {
 }
 
 /// Binary `data`: bytes over HTTP (multipart), base64 over the remote
-/// tunnel, a JSON byte array from a test double.
-Uint8List _bytesOf(Object? data) {
+/// tunnel, a JSON byte array from a test double. Large base64 windows decode
+/// off the caller's isolate: a saved large file must not stutter the UI.
+Future<Uint8List> _bytesOf(Object? data) async {
   if (data is Uint8List) return data;
-  if (data is String) return base64Decode(data);
+  if (data is String) {
+    return decodeOffThread(data.length, () => base64Decode(data));
+  }
   if (data is List) return Uint8List.fromList([for (final b in data) asInt(b) ?? 0]);
   return Uint8List(0);
 }

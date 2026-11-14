@@ -22,6 +22,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 
+import 'binary_decode.dart';
 import 'binary_response.dart';
 import 'connection.dart';
 import 'errors.dart';
@@ -167,9 +168,14 @@ class DshHttpCarrier extends DshCarrier {
       if (boundary == null || boundary.isEmpty) {
         throw DshProtocolException('$endpoint: multipart result without a boundary');
       }
-      decoded = decodeBinaryResponse(response.body, boundary);
+      decoded = await decodeOffThread(response.body.length, () => decodeBinaryResponse(response.body, boundary));
     } else {
-      decoded = asMap(tryDecodeJson(response.text));
+      decoded = asMap(
+        await decodeOffThread(
+          response.body.length,
+          () => tryDecodeJson(utf8.decode(response.body, allowMalformed: true)),
+        ),
+      );
     }
     tracer?.call(
       DshTraceEntry(

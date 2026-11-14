@@ -23,6 +23,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'binary_decode.dart';
 import 'errors.dart';
 import 'json.dart';
 import 'session_api.dart';
@@ -230,7 +231,7 @@ extension DshWorkspaceApi on DshClient {
       }),
     );
     return DshWorkspaceBytes(
-      data: _bytes(map['data']),
+      data: await _bytes(map['data']),
       eof: map['eof'] == true,
       offset: asInt(map['offset']) ?? offset,
       absolutePath: asString(map['absolutePath']) ?? '',
@@ -291,10 +292,13 @@ extension DshWorkspaceApi on DshClient {
 }
 
 /// Binary `data`: bytes over HTTP (multipart), base64 over the remote
-/// tunnel, a JSON byte array from a test double.
-Uint8List _bytes(Object? data) {
+/// tunnel, a JSON byte array from a test double. Large windows decode off the
+/// caller's isolate so a table preview does not stutter while it loads.
+Future<Uint8List> _bytes(Object? data) async {
   if (data is Uint8List) return data;
-  if (data is String) return base64Decode(data);
+  if (data is String) {
+    return decodeOffThread(data.length, () => base64Decode(data));
+  }
   if (data is List) return Uint8List.fromList([for (final b in data) asInt(b) ?? 0]);
   return Uint8List(0);
 }

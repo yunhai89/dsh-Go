@@ -7,6 +7,7 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:dsh_client/dsh_client.dart';
@@ -134,6 +135,30 @@ const int remoteTransferChunkBytes = 512 * 1024;
 
 /// Largest transferred request or response.
 const int maxRemoteTransferBytes = 288 * 1024 * 1024;
+
+/// A 512 KiB chunk's base64 decode, canonical re-encode and length check cost a visible slice of
+/// a frame on a phone. Keep that work off the UI isolate.
+const int _workerDecodeBytes = 256 * 1024;
+
+typedef _TransferChunk = ({Uint8List? bytes, String? problem});
+
+_TransferChunk _decodeTransferChunk(String text, int expected) {
+  final Uint8List bytes;
+  try {
+    bytes = base64Decode(text);
+  } on FormatException {
+    return (bytes: null, problem: 'malformed');
+  }
+  if (bytes.length != expected || base64Encode(bytes) != text) {
+    return (bytes: null, problem: 'non-canonical');
+  }
+  return (bytes: bytes, problem: null);
+}
+
+Future<_TransferChunk> _decodeTransferChunkOffThread(String text, int expected) {
+  if (text.length < _workerDecodeBytes) return Future.value(_decodeTransferChunk(text, expected));
+  return Isolate.run(() => _decodeTransferChunk(text, expected), debugName: 'dsh-remote-base64');
+}
 
 /// One live, authenticated connection to a Host, after
 /// `harness.transport.describe`.
@@ -586,18 +611,16 @@ class RemoteTunnelCarrier extends DshCarrier implements WorkspaceUploadCarrier {
         if (chunk['transferId'] != transferId || chunk['index'] != index || data == null) {
           throw DshProtocolException('$endpoint: out-of-order remote transfer chunk');
         }
-        final Uint8List bytes;
-        try {
-          bytes = base64Decode(data);
-        } on FormatException {
-          throw DshProtocolException('$endpoint: malformed remote transfer chunk');
-        }
         final remaining = totalBytes - index * remoteTransferChunkBytes;
         final expected = remaining < remoteTransferChunkBytes ? remaining : remoteTransferChunkBytes;
-        if (bytes.length != expected || base64Encode(bytes) != data) {
+        final decodedChunk = await _decodeTransferChunkOffThread(data, expected);
+        if (decodedChunk.problem == 'malformed') {
+          throw DshProtocolException('$endpoint: malformed remote transfer chunk');
+        }
+        if (decodedChunk.problem != null) {
           throw DshProtocolException('$endpoint: non-canonical remote transfer chunk');
         }
-        out.add(bytes);
+        out.add(decodedChunk.bytes!);
       }
       final text = utf8.decode(out.takeBytes());
       final decoded = tryDecodeJson(text);
@@ -875,13 +898,13 @@ class _TunnelLink implements DshMuxLink {
         if (chunk['transferId'] != id || chunk['index'] != index || text == null) {
           throw const DshProtocolException('Out-of-order remote stream transfer');
         }
-        final decoded = base64Decode(text);
         final remaining = bytes - index * remoteTransferChunkBytes;
         final expected = remaining < remoteTransferChunkBytes ? remaining : remoteTransferChunkBytes;
-        if (decoded.length != expected || base64Encode(decoded) != text) {
+        final decoded = await _decodeTransferChunkOffThread(text, expected);
+        if (decoded.problem != null) {
           throw const DshProtocolException('Invalid remote stream transfer chunk');
         }
-        out.add(decoded);
+        out.add(decoded.bytes!);
       }
       final frame = asMap(jsonDecode(utf8.decode(out.takeBytes())));
       if (frame == null ||

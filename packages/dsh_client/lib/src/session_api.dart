@@ -8,6 +8,7 @@ import 'dart:typed_data';
 
 import 'agents_api.dart';
 import 'background_session_read.dart';
+import 'binary_decode.dart';
 import 'carrier.dart';
 import 'session_activation.dart';
 import 'connection.dart';
@@ -594,9 +595,10 @@ class DshClient {
       }
     }
     final value = asMapOrEmpty(response);
+    final encoded = asString(value['data']) ?? '';
     return (
       attachment: ImageAttachment.fromJson(value['attachment']),
-      bytes: base64Decode(asString(value['data']) ?? ''),
+      bytes: await decodeOffThread(encoded.length, () => base64Decode(encoded)),
     );
   }
 

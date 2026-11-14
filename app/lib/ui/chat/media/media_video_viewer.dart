@@ -61,6 +61,7 @@ class _MediaVideoViewerPageState extends State<MediaVideoViewerPage> with Widget
   Object? _error;
   Timer? _poller;
   double? _progress;
+  DateTime? _progressAt;
   double? _seeking;
   bool _loading = true;
   bool _polling = false;
@@ -98,6 +99,7 @@ class _MediaVideoViewerPageState extends State<MediaVideoViewerPage> with Widget
       _error = null;
       _loading = true;
       _progress = null;
+      _progressAt = null;
     });
     await _close(previous);
     if (!mounted || generation != _generation) return;
@@ -108,7 +110,18 @@ class _MediaVideoViewerPageState extends State<MediaVideoViewerPage> with Widget
             widget.sessionId,
             _artifact,
             onProgress: (value) {
-              if (mounted && generation == _generation) setState(() => _progress = value);
+              if (!mounted || generation != _generation) return;
+              // A large video arrives in 1 MiB windows. Repainting the player
+              // for every window is not worth competing with its frames.
+              final now = DateTime.now();
+              if (value != null &&
+                  value < 1 &&
+                  _progressAt != null &&
+                  now.difference(_progressAt!) < const Duration(milliseconds: 100)) {
+                return;
+              }
+              _progressAt = now;
+              setState(() => _progress = value);
             },
           );
       if (!mounted || generation != _generation) return;

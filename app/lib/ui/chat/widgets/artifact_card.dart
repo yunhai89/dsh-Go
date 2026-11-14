@@ -123,6 +123,7 @@ class _ArtifactTileState extends ConsumerState<ArtifactTile> {
   String? _note;
   bool _failed = false;
   Timer? _clear;
+  DateTime? _progressAt;
 
   Artifact get _artifact => widget.artifact;
 
@@ -154,6 +155,7 @@ class _ArtifactTileState extends ConsumerState<ArtifactTile> {
     setState(() {
       _busy = busy;
       _progress = null;
+      _progressAt = null;
       _note = null;
       _failed = false;
     });
@@ -172,6 +174,17 @@ class _ArtifactTileState extends ConsumerState<ArtifactTile> {
 
   void _onProgress(double? progress) {
     if (!mounted) return;
+    // A fast local read reports every 1 MiB window; repainting the row at that
+    // rate while the download is still landing just competes with the frame.
+    final now = DateTime.now();
+    if (_busy == _Busy.fetching &&
+        _progressAt != null &&
+        progress != null &&
+        progress < 1 &&
+        now.difference(_progressAt!) < const Duration(milliseconds: 100)) {
+      return;
+    }
+    _progressAt = now;
     setState(() {
       if (_busy != _Busy.saving) {
         _busy = _Busy.fetching;

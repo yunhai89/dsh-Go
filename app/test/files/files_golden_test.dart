@@ -21,6 +21,10 @@ Future<void> _preview(WidgetTester tester, MemoryWorkspace ws, String rel, Brigh
       brightness: brightness,
     ),
   );
+  await pumpFrames(tester, 2);
+  // CSV/TSV parsing runs on a worker isolate; let it finish before the frame
+  // that the golden captures.
+  await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
   await pumpFrames(tester, 10);
 }
 
