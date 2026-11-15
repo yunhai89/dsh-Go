@@ -43,6 +43,7 @@ import '../theme/theme.dart';
 import '../../state/streaming_asr_model_state.dart';
 import '../../state/streaming_asr_state.dart';
 import '../../state/streaming_pcm_state.dart';
+import '../../usage/usage_stats.dart';
 import '../../voice/live_words.dart';
 import '../../voice/streaming_pcm.dart';
 import 'call/call_backdrop.dart';
@@ -153,6 +154,7 @@ class _VoiceCallPageState extends ConsumerState<VoiceCallPage> with WidgetsBindi
           bargeIn: saved.bargeIn,
           speaker: saved.speaker,
           spokenHint: saved.spoken ? appNote(appL10n.speechCallHint) : null,
+          pause: saved.pause,
         );
       },
       permission: () async => await bridge.requestPermission() == VoicePermission.granted,
@@ -166,6 +168,7 @@ class _VoiceCallPageState extends ConsumerState<VoiceCallPage> with WidgetsBindi
     ref.listenManual(speechVoiceSettingsProvider, (_, _) => unawaited(_settleVoice()));
     ref.listenManual(voiceSettingsProvider, (_, _) => unawaited(_call.refreshRecognizer()));
     ref.listenManual(cloudAsrProvider, (_, _) => unawaited(_call.refreshRecognizer()));
+    ref.listenManual(callSettingsProvider.select((s) => s.pause), (_, pause) => _call.setPause(pause));
     HapticFeedback.mediumImpact();
     _enter.forward();
     unawaited(_start());
@@ -254,6 +257,8 @@ class _VoiceCallPageState extends ConsumerState<VoiceCallPage> with WidgetsBindi
       case CallPhase.listening when _since == null:
         _since = DateTime.now();
         HapticFeedback.lightImpact();
+        // Anonymous usage statistics: a call got through (the microphone is on).
+        ref.read(usageStatsProvider.notifier).count(UsageCount.call);
       case CallPhase.hearing:
         HapticFeedback.selectionClick();
       case CallPhase.speaking:

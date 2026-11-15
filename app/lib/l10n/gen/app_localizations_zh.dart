@@ -2887,6 +2887,12 @@ class L10nZh extends L10n {
   String get botsPetImportHint => '导入你自己的像素宠物：一个 zip，里面是 pack.json 和序列帧 PNG，格式见仓库里的 docs/design/pets.md。长按导入的宠物可以删除。';
 
   @override
+  String get botsPetMake => '让 AI 做一只宠物';
+
+  @override
+  String get botsPetMakeSubtitle => '把 GIF、表情包或主题转成宠物包';
+
+  @override
   String botsPetImportDone(String name) {
     return '「$name」来了';
   }
@@ -2985,6 +2991,9 @@ class L10nZh extends L10n {
 
   @override
   String get botsPetSize => '大小';
+
+  @override
+  String get botsPetCustomSize => '自定义大小';
 
   @override
   String get botsPetQuiet => '安静模式';
@@ -15399,7 +15408,7 @@ class L10nZh extends L10n {
   String get remoteDirectoryGo => '前往';
 
   @override
-  String get remoteDirectoryAbsolutePath => '从「/」开始写完整路径';
+  String get remoteDirectoryAbsolutePath => '写完整路径，如 /root/workspace 或 C:/Users/me';
 
   @override
   String get remoteDirectoryNewFolder => '新建文件夹';
@@ -17736,6 +17745,21 @@ class L10nZh extends L10n {
   String get speechCallSettings => '通话设置';
 
   @override
+  String get speechCallPause => '停顿多久算说完';
+
+  @override
+  String get speechCallPauseQuick => '快';
+
+  @override
+  String get speechCallPauseNormal => '适中';
+
+  @override
+  String get speechCallPausePatient => '耐心';
+
+  @override
+  String get speechCallPauseHint => '说话爱停顿、常被她抢话，就选「耐心」；嫌她接得慢，选「快」。';
+
+  @override
   String get speechCallSpeechSection => '声音和识别';
 
   @override
@@ -17964,6 +17988,9 @@ class L10nZh extends L10n {
 
   @override
   String get stateSizeLarge => '大';
+
+  @override
+  String get stateSizeCustom => '自定义';
 
   @override
   String get statePetDone => '做完了';
@@ -23051,7 +23078,8 @@ class L10nZh extends L10n {
   String get usageStatsSection => '改进 DSH Go';
 
   @override
-  String get usageStatsFooter => '这个开关只控制 dsh-go 自身的使用次数、版本、手机品牌和型号、系统版本统计，不含对话、文件和账号；它不控制 Google ML Kit SDK 的统计。';
+  String get usageStatsFooter =>
+      '这个开关只控制 dsh-go 自身的统计：各功能使用次数（含酒馆消息、伙伴小屋、语音通话）、模型回复报告的 token 数、版本、手机品牌和型号、系统版本，不含对话、角色卡、文件和账号；它不控制 Google ML Kit SDK 的统计。';
 
   @override
   String get usageNoticeBody => '不含对话和个人信息，可随时关闭';
@@ -25225,6 +25253,16 @@ class L10nZh extends L10n {
   String get workshopErrorGeneric => '没有成功，稍后再试。';
 
   @override
+  String workshopErrorWithCode(String code) {
+    return '没有成功，稍后再试。（$code）';
+  }
+
+  @override
+  String workshopErrorPackage(String code) {
+    return '包里有文件不符合要求，没法上传（$code）。';
+  }
+
+  @override
   String get workshopDisclosureTitle => '让工坊核对你的 GitHub 身份';
 
   @override
@@ -25668,7 +25706,22 @@ class L10nZh extends L10n {
   String get workshopPublishSourcesEmptyTitle => '还没有可以投稿的';
 
   @override
-  String get workshopPublishSourcesEmptyMessage => '自己导入的像素宠物和现在的伙伴可以投稿。';
+  String get workshopPublishSourcesEmptyMessage => '自己导入的像素宠物和现在的伙伴可以投稿，也可以直接从文件选一个。';
+
+  @override
+  String get workshopPublishFromFile => '从文件选择';
+
+  @override
+  String get workshopPublishFromFileHint => '宠物或伙伴的 zip，不用先导入';
+
+  @override
+  String get workshopPublishTitleEnHelper => '选填，留空就用中文名称';
+
+  @override
+  String get workshopPublishAuthorHelper => '选填，留空就用你的 GitHub 用户名';
+
+  @override
+  String get workshopPublishLicenseHelper => '选填，不选就是「作者授权」';
 
   @override
   String get workshopPublishSourcesIssue => '没能读出本机可以投稿的内容。';
@@ -25704,7 +25757,7 @@ class L10nZh extends L10n {
   String get workshopPublishId => '作品 ID';
 
   @override
-  String get workshopPublishIdHelper => '小写字母、数字和短横线';
+  String get workshopPublishIdHelper => '选填，留空按名称自动生成；小写字母、数字和短横线';
 
   @override
   String get workshopPublishAuthor => '作者';
@@ -25716,7 +25769,7 @@ class L10nZh extends L10n {
   String get workshopPublishSourceLink => '来源链接';
 
   @override
-  String get workshopPublishSourceHelper => '作品主页或出处，以 https:// 开头';
+  String get workshopPublishSourceHelper => '选填，留空就用你的 GitHub 主页；以 https:// 开头';
 
   @override
   String get workshopPublishSectionAbout => '介绍（选填）';

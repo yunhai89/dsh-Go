@@ -1804,6 +1804,8 @@
   "botsPetSource": "来自 DSH-TUI",
   "botsPetImport": "导入",
   "botsPetImportHint": "导入你自己的像素宠物：一个 zip，里面是 pack.json 和序列帧 PNG，格式见仓库里的 docs/design/pets.md。长按导入的宠物可以删除。",
+  "botsPetMake": "让 AI 做一只宠物",
+  "botsPetMakeSubtitle": "把 GIF、表情包或主题转成宠物包",
   "botsPetImportDone": "「{name}」来了",
   "@botsPetImportDone": {
     "placeholders": {
@@ -1888,6 +1890,7 @@
     }
   },
   "botsPetSize": "大小",
+  "botsPetCustomSize": "自定义大小",
   "botsPetQuiet": "安静模式",
   "botsPetQuietSubtitle": "只做动作，不冒气泡",
   "botsPetShowNow": "立即显示",
@@ -9372,7 +9375,7 @@
   "remoteDirectoryRecent": "最近",
   "remoteDirectoryEnterPath": "输入路径",
   "remoteDirectoryGo": "前往",
-  "remoteDirectoryAbsolutePath": "从「/」开始写完整路径",
+  "remoteDirectoryAbsolutePath": "写完整路径，如 /root/workspace 或 C:/Users/me",
   "remoteDirectoryNewFolder": "新建文件夹",
   "remoteDirectoryParentCaption": "在「{name}」里",
   "@remoteDirectoryParentCaption": {
@@ -10789,6 +10792,11 @@
   "speechCallEarpiece": "听筒",
   "speechBackdropTitle": "通话背景",
   "speechCallSettings": "通话设置",
+  "speechCallPause": "停顿多久算说完",
+  "speechCallPauseQuick": "快",
+  "speechCallPauseNormal": "适中",
+  "speechCallPausePatient": "耐心",
+  "speechCallPauseHint": "说话爱停顿、常被她抢话，就选「耐心」；嫌她接得慢，选「快」。",
   "speechCallSpeechSection": "声音和识别",
   "speechCallVoice": "她的声音",
   "speechCallSpeechHint": "改了从下一句开始生效。",
@@ -10877,6 +10885,7 @@
   "stateSizeSmall": "小",
   "stateSizeStandard": "标准",
   "stateSizeLarge": "大",
+  "stateSizeCustom": "自定义",
   "statePetDone": "做完了",
   "statePetFailed": "出错了",
   "statePhoneNotReady": "手机操控模块未就绪",
@@ -14147,7 +14156,7 @@
   },
   "usageStatsTitle": "发送匿名使用统计",
   "usageStatsSection": "改进 DSH Go",
-  "usageStatsFooter": "这个开关只控制 dsh-go 自身的使用次数、版本、手机品牌和型号、系统版本统计，不含对话、文件和账号；它不控制 Google ML Kit SDK 的统计。",
+  "usageStatsFooter": "这个开关只控制 dsh-go 自身的统计：各功能使用次数（含酒馆消息、伙伴小屋、语音通话）、模型回复报告的 token 数、版本、手机品牌和型号、系统版本，不含对话、角色卡、文件和账号；它不控制 Google ML Kit SDK 的统计。",
   "usageNoticeBody": "不含对话和个人信息，可随时关闭",
   "usageUpgradeNotice": "新增匿名使用统计，帮助改进 DSH Go。\n不含对话和个人信息",
   "usageUpgradeLearn": "了解",
@@ -15907,6 +15916,22 @@
   "workshopErrorCancelled": "已取消。",
   "workshopErrorUnknownResult": "不确定有没有成功。先刷新看看，别急着重试。",
   "workshopErrorGeneric": "没有成功，稍后再试。",
+  "workshopErrorWithCode": "没有成功，稍后再试。（{code}）",
+  "@workshopErrorWithCode": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
+  "workshopErrorPackage": "包里有文件不符合要求，没法上传（{code}）。",
+  "@workshopErrorPackage": {
+    "placeholders": {
+      "code": {
+        "type": "String"
+      }
+    }
+  },
   "workshopDisclosureTitle": "让工坊核对你的 GitHub 身份",
   "workshopDisclosureLead": "投稿、管理自己的投稿和举报，工坊都要先知道你是谁。办法是把你的 GitHub 登录凭据发给下面这个工坊服务，由它去问 GitHub 你是哪个账号。",
   "workshopDisclosureWorker": "收到凭据的工坊",
@@ -16105,7 +16130,12 @@
   "workshopPublishChooseTitle": "选一个要投稿的",
   "workshopPublishCompanionCurrent": "现在的伙伴",
   "workshopPublishSourcesEmptyTitle": "还没有可以投稿的",
-  "workshopPublishSourcesEmptyMessage": "自己导入的像素宠物和现在的伙伴可以投稿。",
+  "workshopPublishSourcesEmptyMessage": "自己导入的像素宠物和现在的伙伴可以投稿，也可以直接从文件选一个。",
+  "workshopPublishFromFile": "从文件选择",
+  "workshopPublishFromFileHint": "宠物或伙伴的 zip，不用先导入",
+  "workshopPublishTitleEnHelper": "选填，留空就用中文名称",
+  "workshopPublishAuthorHelper": "选填，留空就用你的 GitHub 用户名",
+  "workshopPublishLicenseHelper": "选填，不选就是「作者授权」",
   "workshopPublishSourcesIssue": "没能读出本机可以投稿的内容。",
   "workshopPublishPetsIssue": "没能读出本机的像素宠物。",
   "workshopPublishCompanionIssue": "没能读出本机的伙伴。",
@@ -16117,11 +16147,11 @@
   "workshopPublishTitleEn": "英文名称",
   "workshopPublishSectionInfo": "作品信息",
   "workshopPublishId": "作品 ID",
-  "workshopPublishIdHelper": "小写字母、数字和短横线",
+  "workshopPublishIdHelper": "选填，留空按名称自动生成；小写字母、数字和短横线",
   "workshopPublishAuthor": "作者",
   "workshopPublishLicenseAuthor": "作者授权",
   "workshopPublishSourceLink": "来源链接",
-  "workshopPublishSourceHelper": "作品主页或出处，以 https:// 开头",
+  "workshopPublishSourceHelper": "选填，留空就用你的 GitHub 主页；以 https:// 开头",
   "workshopPublishSectionAbout": "介绍（选填）",
   "workshopPublishTags": "标签",
   "workshopPublishTagsHelper": "用逗号分开，最多 8 个",
