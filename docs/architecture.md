@@ -17,7 +17,7 @@
                                                │ 127.0.0.1:3080    │
                                                │ 或 SSH / 中继（远程主机）
 ┌──────────────────────────────────────────────▼───────────────────▼──────────┐
-│ PRoot Ubuntu 24.04 用户态                                                    │
+│ PRoot Ubuntu 26.04 用户态                                                    │
 │   dsh web --patch /etc/dsh-app/dsh-web.patch.yml --host 127.0.0.1 --port …  │
 │     ├─ 官方 DSH 引擎（runtime/patches 打了补丁）                              │
 │     └─ dsh-go-bridge（Cordis 插件：/dsh-go/v1/*，原生插件协议/伙伴/删除/配置） │
@@ -31,7 +31,7 @@
 | UI | Flutter 3.47（Dart 3.13）+ Riverpod 3 | 玻璃质感用 `BackdropFilter`；手写 Notifier，无 codegen |
 | 原生层 | Kotlin，Flutter 插件形式写在 `app/android/` | 解压运行时、管理 proot 进程、前台服务、手机操控 |
 | DSH 客户端 | 纯 Dart `packages/dsh_client` | 无 Flutter 依赖，可单测；本机与远程共用 |
-| 本地运行时 | Ubuntu 24.04 + Node + `@deepseek-ai/dsh`，经 proot 运行 | 免 Root、免 Termux |
+| 本地运行时 | Ubuntu 26.04 + Node + `@deepseek-ai/dsh`，经 proot 运行 | 免 Root、免 Termux |
 
 五条贯穿主线：
 

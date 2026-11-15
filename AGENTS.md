@@ -76,6 +76,7 @@ CI（`.github/workflows/ci.yml`）在 PR 上跑通用检查和改动涉及的部
 
 ### 真机验证
 
+- **每次改动都要上真机**：编出 APK 后用 `adb install -r` 装到真机上验证；确认没问题，再把版本号 +1（`app/pubspec.yaml` 与 `docs/guide/README.md` 同步）、提交、推送并发版。没在真机上验过的改动不发版。
 - Flutter widget 测试需要对应架构的 Flutter 引擎；只有桌面端（x86_64）而设备是 arm64 时，明确写"未运行"及原因。
 - 手机操控、PRoot、直接启动、更新安装相关改动必须在真机上验证；桌面结果不能替代。
 

@@ -1,6 +1,6 @@
 # 本地引擎升级建议（2026-11）
 
-当前基线：DSH `0.2.2-rc.1`、Node `24.22.1`、Ubuntu Base `24.04.5`、proot `5.1.107.102`、运行时 revision `r15`。
+当前基线：DSH `0.2.2-rc.1`、Node `24.22.1`、Ubuntu Base `26.04.1`、proot `5.1.107.102`、运行时 revision `r16`。
 
 ## 优先级 1：先修网络，不换引擎
 
@@ -28,12 +28,12 @@ opencode/Cloudflare 的 `TRANSPORT Connection error.: AggregateError (ETIMEDOUT)
 3. **分层运行时**：启用 `RUNTIME_LAYERS=1`（base + engine），让 DSH/桥接更新只下载 engine 层，避免每次 150 MB rootfs。
 4. **冷启动测量**：用 Perfetto/Android profiler 记录「点图标 → 首帧」「发消息 → 首个 token」，先量化再改；当前文件解码和表格已经移出 UI isolate，下一瓶颈更可能在 proot 路径翻译。
 
-## 优先级 4：Ubuntu Base
+## 优先级 4：Ubuntu Base（已升 26.04.1，r16）
 
-- 24.04 LTS 仍有支持，运行时的 tzdata/CA 已跟安全更新；没有必须升 26.04 的理由。
-- 26.04.1 基础镜像可用，glibc 2.43；但换 base 会改变 `baseId`，现有用户必须做一次完整 rootfs 重置（只保留 `/root`），且 147 个补丁要重新验证。
-- 建议等 24.04 接近 EOL，或确实需要 glibc 2.42+ 的预编译工具时再做；只选 26.04 LTS，不选 26.10。
-- 真要做，先做 x86_64 原型和 PRoot syscall 冒烟，再排 arm64 真机矩阵。
+- 2026-11 已升到 26.04.1「Resolute Raccoon」（glibc 2.43），base tarball 与 sha256 钉在 `runtime/build-runtime.sh`，依赖锁在 `runtime/locks/ubuntu-resolute-<arch>.json`。
+- **换 base 会改 `baseId`**：已装 24.04 运行时的设备不能原地升级，App 会要求「重置引擎」一次（`/root` 保留）。
+- 26.04 的 coreutils 换成了 rust-coreutils：`/usr/bin/coreutils` 是一个多调用二进制，`usr/lib/cargo/bin/coreutils/*` 全是指向它的硬链接。`rtbuild.py` 把整棵硬链接树按拷贝展开会多出约 1 GB（rootfs 从 159 MB 涨到 505 MB），现在这类硬链接改写成符号链接，rootfs 回到 159 MB。
+- 只有 9 个无关的悬空链接（systemd unit、`pager -> more`），systemd 本就不在运行时里。
 
 ## 优先级 5：网络与代理产品化
 

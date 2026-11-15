@@ -1278,6 +1278,13 @@ def cmd_assemble(args):
         src = entries.get(target)
         if src is None or src.kind != "file":
             raise SystemExit("hard link %s -> %s has no regular-file target" % (p, target))
+        if p.startswith("usr/lib/cargo/bin/coreutils/"):
+            # 26.04's rust coreutils: one multicall binary (/usr/bin/coreutils) hard-linked
+            # under every tool name. Symlinks run the same command for none of the bytes —
+            # 114 copies would add ~600 MB to the rootfs.
+            entries[p] = Entry("symlink", 0o777, link=os.path.relpath(target, os.path.dirname(p)), origin="ubuntu")
+            report["relativizedSymlinks"] += 1
+            continue
         entries[p] = Entry("file", mode, data=src.data, origin="ubuntu")
         report["convertedHardlinks"].append("%s -> %s" % (p, target))
 

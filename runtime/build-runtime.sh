@@ -40,18 +40,18 @@ LOCKS="$HERE/locks"
 PY=(python3 -I "$HERE/lib/rtbuild.py")
 
 # ---- pinned inputs (override via environment; pinned hashes then must be updated too) ----
-RUNTIME_REVISION="${RUNTIME_REVISION:-r15}"  # r14 + per-family DNS under PRoot, input recovery, session deletion and upload resolver fixes, title and boot cache work; DSH as r12
+RUNTIME_REVISION="${RUNTIME_REVISION:-r16}"  # r15 + Ubuntu 26.04 base (rust coreutils hard links kept as symlinks); DSH as r15
 DSH_VERSION="${DSH_VERSION:-0.2.2-rc.1}"
 NODE_VERSION="${NODE_VERSION:-24.22.1}"
 # pnpm runs DSH's plugin installs (pluginManager / `dsh plugin`); the version the DSH repo pins.
 PNPM_VERSION="${PNPM_VERSION:-11.28.5}"
 # dist.integrity of pnpm-$PNPM_VERSION.tgz, identical on registry.npmjs.org and npmmirror
 PNPM_INTEGRITY="${PNPM_INTEGRITY:-sha512-SEVj0wtMKtJ8tIqpT/KzAtvOvI/2vyiBbCWJiG4UbOf3bzVPO8GkOOb16XaMMCqgpvet2CMpA81M+BQmy8FNng==}"
-UBUNTU_VERSION="${UBUNTU_VERSION:-24.04.5}"
+UBUNTU_VERSION="${UBUNTU_VERSION:-26.04.1}"
 PROOT_VERSION="5.1.107.102"
 TALLOC_VERSION="2.5.0"
 SHMEM_VERSION="0.7"
-UBUNTU_EXTRA="${UBUNTU_EXTRA:-tzdata ca-certificates git}"   # extra noble debs (+ dependency closure)
+UBUNTU_EXTRA="${UBUNTU_EXTRA:-tzdata ca-certificates git}"   # extra resolute debs (+ dependency closure)
 PYTHON_VERSION="${PYTHON_VERSION:-3.12.15}"
 PBS_RELEASE="${PBS_RELEASE:-20261021}"    # astral-sh/python-build-standalone release tag
 COMPRESS="${COMPRESS:-xz}"          # xz | gz
@@ -60,7 +60,7 @@ XZ_THREADS="${XZ_THREADS:-4}"       # xz 5.8.1 -6, 136704-byte sample: -T1=408 B
 PRUNE_DEV_METADATA="${PRUNE_DEV_METADATA:-1}"   # drop *.map / *.d.ts from node_modules
 SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1767225600}"  # 2026-01-01T00:00:00Z, fixed tar mtimes
 
-UBUNTU_MIRROR="https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/ubuntu-base/releases/24.04/release"
+UBUNTU_MIRROR="https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/ubuntu-base/releases/26.04/release"
 NODE_MIRROR="https://npmmirror.com/mirrors/node"
 NPM_REGISTRY="https://registry.npmmirror.com"
 TERMUX_REPO="https://packages.termux.dev/apt/termux-main"
@@ -73,8 +73,8 @@ PBS_MIRROR="https://registry.npmmirror.com/-/binary/python-build-standalone"
 # sha256 pins, cross-checked against cdimage.ubuntu.com / nodejs.org / the Termux Packages
 # index. Unpinned version overrides still resolve the upstream checksum metadata.
 declare -A PIN=(
-  [ubuntu-base-24.04.5-base-arm64.tar.gz]=a91d5a93010193712d346d761372b7c9db6dfcf093893161c64ca107f05914f2
-  [ubuntu-base-24.04.5-base-amd64.tar.gz]=e77b6f10c2590cef872b33ee9f635a0e3fd1f57fb074c0e52b5c7f56147a0c86
+  [ubuntu-base-26.04.1-base-arm64.tar.gz]=5a1906794ced63a71a8119c3f211ef5f0bbe0a243001b4bbd41fdf80c5b219fd
+  [ubuntu-base-26.04.1-base-amd64.tar.gz]=a496a960472ce474a59590b8987d3a1135d3cbef1991f3b1abe8cacfea8bf85a
   [node-v24.22.1-linux-arm64.tar.xz]=dbabf7a1cbf947e6059ffad2c27b80041db97dea1e553b62afdee7f13fca336e
   [node-v24.22.1-linux-x64.tar.xz]=6c172a9ab6718f7b801fb5a7bd486af2ee5e32758086a04b84fcce2aa77095e6
   [proot_5.1.107.102_aarch64.deb]=10a394b585c2fc2b2c8502544f4e5f1be581dc8bfff79e8ba62f16207423e030
@@ -192,13 +192,13 @@ termux_deb() {  # $1 = package, $2 = version, $3 = termux arch; echoes path
   printf '%s' "$dest"
 }
 
-# Extra Ubuntu noble packages (tzdata, ca-certificates, git and their dependency closure).
-# Chain of trust: InRelease of noble / noble-updates / noble-security verified with gpgv against
+# Extra Ubuntu resolute packages (tzdata, ca-certificates, git and their dependency closure).
+# Chain of trust: InRelease of resolute / resolute-updates / resolute-security verified with gpgv against
 # ubuntu-archive-keyring.gpg from the checksum-verified Ubuntu Base tarball -> Packages.xz hash
-# -> each .deb hash. The resolved set is pinned in runtime/locks/ubuntu-noble-<arch>.json
+# -> each .deb hash. The resolved set is pinned in runtime/locks/ubuntu-resolute-<arch>.json
 # (re-resolve with UPDATE_DEB_LOCK=1).
 ubuntu_extra_debs() {  # $1 = ubuntu arch, $2 = verified base tarball; echoes deb paths, one per line
-  local arch="$1" base="$2" lock="$LOCKS/ubuntu-noble-$1.json" mirror
+  local arch="$1" base="$2" lock="$LOCKS/ubuntu-resolute-$1.json" mirror
   [[ "$arch" == amd64 ]] && mirror="$UBUNTU_ARCHIVE_AMD64" || mirror="$UBUNTU_ARCHIVE_ARM64"
   if [[ ! -f "$lock" || "${UPDATE_DEB_LOCK:-0}" == 1 ]] || \
      ! python3 -I -c 'import json,sys; sys.exit(json.load(open(sys.argv[1]))["want"] != sys.argv[2].split())' "$lock" "$UBUNTU_EXTRA"; then
@@ -214,7 +214,7 @@ with tarfile.open(sys.argv[1], "r:gz") as t:
         sys.exit("keyring not found in base tarball")
 PYEOF
     local -a idx=() ; local suite want
-    for suite in noble noble-updates noble-security; do
+    for suite in resolute resolute-updates resolute-security; do
       fetch "$mirror/dists/$suite/InRelease" "$dir/$suite.InRelease"
       gpgv --keyring "$dir/archive-keyring.gpg" "$dir/$suite.InRelease" 2>/dev/null \
         || die "InRelease signature check failed for $suite"
