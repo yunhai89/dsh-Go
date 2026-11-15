@@ -477,6 +477,8 @@ class ForumPostTile extends StatelessWidget {
                 label: post.likeCount > 0 ? forumCount(post.likeCount) : null,
                 tooltip: post.liked ? l10n.remoteForumUnlike : l10n.remoteForumLike,
                 color: post.liked ? colors.danger : null,
+                active: post.liked,
+                haptic: true,
                 onTap: post.yours ? null : onLike,
               ),
               _PostAction(icon: AppIcons.reply, tooltip: l10n.commonReply, onTap: onReply),
@@ -495,8 +497,16 @@ class ForumPostTile extends StatelessWidget {
 }
 
 /// A 36 tall icon key (with an optional count) under a post.
-class _PostAction extends StatelessWidget {
-  const _PostAction({required this.icon, required this.tooltip, this.label, this.color, this.onTap});
+class _PostAction extends StatefulWidget {
+  const _PostAction({
+    required this.icon,
+    required this.tooltip,
+    this.label,
+    this.color,
+    this.onTap,
+    this.active = false,
+    this.haptic = false,
+  });
 
   final IconData icon;
   final String tooltip;
@@ -504,15 +514,48 @@ class _PostAction extends StatelessWidget {
   final Color? color;
   final VoidCallback? onTap;
 
+  /// A state that just turned on gets the 欢快Q弹 feedback.
+  final bool active;
+  final bool haptic;
+
+  @override
+  State<_PostAction> createState() => _PostActionState();
+}
+
+class _PostActionState extends State<_PostAction> with SingleTickerProviderStateMixin {
+  late final AnimationController _pop = AnimationController(vsync: this, duration: const Duration(milliseconds: 460));
+
+  @override
+  void didUpdateWidget(_PostAction oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active && !AppMotion.reduced(context)) {
+      _pop.forward(from: 0);
+    } else if (!widget.active) {
+      _pop.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _pop.dispose();
+    super.dispose();
+  }
+
+  void _tap() {
+    if (widget.haptic) HapticFeedback.lightImpact();
+    widget.onTap?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = DshColors.of(context);
-    final tint = onTap == null ? colors.textDisabled : (color ?? colors.textTertiary);
+    final tint = widget.onTap == null ? colors.textDisabled : (widget.color ?? colors.textTertiary);
+    final icon = Icon(widget.icon, size: 18, color: tint);
     return Tooltip(
-      message: tooltip,
+      message: widget.tooltip,
       child: InkWell(
-        onTap: onTap,
+        onTap: widget.onTap == null ? null : _tap,
         customBorder: const StadiumBorder(),
         child: ConstrainedBox(
           constraints: const BoxConstraints(minWidth: 40, minHeight: 36),
@@ -522,8 +565,18 @@ class _PostAction extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 18, color: tint),
-                if (label case final label?) ...[
+                AnimatedBuilder(
+                  animation: _pop,
+                  child: icon,
+                  builder: (context, child) {
+                    final t = AppMotion.popCurve.transform(_pop.value.clamp(0.0, 1.0));
+                    return Transform.scale(
+                      scale: 1 + 0.30 * t,
+                      child: Transform.rotate(angle: 0.10 * (1 - _pop.value), child: child),
+                    );
+                  },
+                ),
+                if (widget.label case final label?) ...[
                   const SizedBox(width: 4),
                   Text(label, style: AppType.tabular(theme.textTheme.bodySmall!.copyWith(color: tint))),
                 ],

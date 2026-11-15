@@ -541,10 +541,10 @@ class MarkdownBody extends StatefulWidget {
   /// Characters a second when the model is slower than this; the reveal goes faster
   /// by itself when it would fall behind. Near a comfortable reading pace, so the text
   /// flows evenly instead of catching up in bursts.
-  static const _revealPace = 120.0;
+  static const _revealPace = 33.3;
 
   /// How long the newest words take to fade in.
-  static const _revealFade = 0.24;
+  static const _revealFade = 0.09;
 
   /// [text] for the reveal. Only ever appended to while streaming, as the reveal needs
   /// (a rewrite far from the end would retype the message): a table's header is bolded
@@ -664,7 +664,7 @@ class _MarkdownBodyState extends State<MarkdownBody> {
       // The tail is repaired here (and open formulas shown as source), so
       // the package must not complete open `\(` / `\[` on its own.
       isStreaming: widget.reveal && widget.streaming,
-      animation: widget.reveal ? GptMarkdownAnimation.fade : GptMarkdownAnimation.none,
+      animation: widget.reveal ? GptMarkdownAnimation.blurIn : GptMarkdownAnimation.none,
       blockAnimation: widget.reveal ? GptMarkdownBlockAnimation.fadeIn : GptMarkdownBlockAnimation.none,
       charactersPerSecond: MarkdownBody._revealPace,
       revealFadeSeconds: MarkdownBody._revealFade,

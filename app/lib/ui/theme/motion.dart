@@ -75,6 +75,9 @@ abstract final class AppMotion {
     bounce: 0.15,
   );
 
+  /// 抽屉/侧栏拖拽松手:过阻尼、不回头。跟手时已经是 1:1,松手只负责咬死。
+  static final snapSpring = SpringDescription.withDurationAndBounce(duration: const Duration(milliseconds: 280));
+
   // ── 灵动档([fluid])才用的弹簧:都带一点回弹,只喂给位移和缩放,不喂透明度 ──
 
   /// 松手回弹:按压回到 1 时越过一点点。
