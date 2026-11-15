@@ -40,7 +40,7 @@ LOCKS="$HERE/locks"
 PY=(python3 -I "$HERE/lib/rtbuild.py")
 
 # ---- pinned inputs (override via environment; pinned hashes then must be updated too) ----
-RUNTIME_REVISION="${RUNTIME_REVISION:-r16}"  # r15 + Ubuntu 26.04 base (rust coreutils hard links kept as symlinks); DSH as r15
+RUNTIME_REVISION="${RUNTIME_REVISION:-r17}"  # r16 + upstream 1.1.0 patches; Ubuntu 26.04 base, rust coreutils links kept
 DSH_VERSION="${DSH_VERSION:-0.2.2-rc.1}"
 NODE_VERSION="${NODE_VERSION:-24.22.1}"
 # pnpm runs DSH's plugin installs (pluginManager / `dsh plugin`); the version the DSH repo pins.
