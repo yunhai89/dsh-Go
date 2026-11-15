@@ -48,7 +48,7 @@ AOSP 16.0 / QPR1 / QPR2 / 17 的 `Notification.hasPromotableCharacteristics()` �
 - 点击打开宠物的「最相关对话」，和点悬浮宠物去的是同一个地方。
 - 审批按钮仍只放在「等你确认」通知上，实时活动不重复放。
 - 锁屏隐藏敏感内容时只显示「DSH 正在干活」这类泛化文字，标题照 `alertTitle` 脱敏。
-- 通知标题按 16 个显示列截断（CJK、emoji 算两列，省略号算在内，`LiveContent.clipTitle`）：小米超级岛拿标题量宽度，标题多长岛就多宽，被省略的那半截还会留成一段空白。`TITLE_MAX_COLUMNS` 调这个上限。
+- 通知标题用状态词（「工作中」「待确认」「完成」「出错」「操作中」，2–3 个字），会话名放正文：小米超级岛只拿**标题**量宽度，实测每多一个汉字岛宽 +84px（1200px 屏：2 字 307px、4 字 454px、7 字起封顶 698px），正文和胶囊文字都不影响。没有状态词时才退回标题，并按 10 个显示列截断（`LiveContent.clipTitle`，CJK、emoji 算两列）。
 
 ### 2.2 开关
 
@@ -71,6 +71,14 @@ AOSP 16.0 / QPR1 / QPR2 / 17 的 `Notification.hasPromotableCharacteristics()` �
 ## 4. 验证
 
 - 单测：`LiveContentTest`（JVM）、`test/notify/live_activity_test.dart`。
+- 岛宽：debug 包（可调试才注册）的 `PET_PROBE` 能按给定标题发文，不用真跑一轮：
+
+  ```sh
+  adb shell am broadcast -a io.github.ccch1mneyyy.dsh_app.PET_PROBE --es cmd live --es title "云崽机器人适配器空白排查"
+  adb shell am broadcast -a io.github.ccch1mneyyy.dsh_app.PET_PROBE --es cmd live-off
+  ```
+
+  截状态栏量岛的左右边界即可；HyperOS 4 的实测数字见 §2.1。
 - 真机：需要 Pixel（Android 16 QPR1+）、ColorOS 16、MagicOS 10 或 HyperOS 3.1+ 的设备，或 Android 16 QPR2 模拟器。检查胶囊计时、等你确认时的胶囊文字、锁屏脱敏、点击跳转、手机操控时的「停止操作」。国行 OriginOS 6 上应当什么都不发。
 
 ## 5. 以后可以做

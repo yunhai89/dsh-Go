@@ -84,6 +84,28 @@ internal object PetOverlayProbe {
                             sessionId = "s1", host = "{\"kind\":\"local\",\"id\":\"local\"}", kind = "done", eventId = null,
                         ),
                     )
+                    // The live activity (status bar island) as Dart posts it: the title's length
+                    // is what the island measures, so `--es title …` sweeps it.
+                    "live" -> io.github.ccch1mneyyy.dsh_app.notify.LiveActivity.update(
+                        c.applicationContext,
+                        true,
+                        null,
+                        io.github.ccch1mneyyy.dsh_app.notify.LiveContent(
+                            kind = io.github.ccch1mneyyy.dsh_app.notify.LiveContent.Kind.parse(intent.getStringExtra("kind"))
+                                ?: io.github.ccch1mneyyy.dsh_app.notify.LiveContent.Kind.RUNNING,
+                            title = intent.getStringExtra("title") ?: "修一下登录页",
+                            text = intent.getStringExtra("text") ?: "正在工作",
+                            chip = intent.getStringExtra("chip") ?: "工作中",
+                            publicText = "DSH 正在工作",
+                            sinceMs = System.currentTimeMillis(),
+                        ),
+                    )
+                    "live-off" -> io.github.ccch1mneyyy.dsh_app.notify.LiveActivity.update(
+                        c.applicationContext,
+                        true,
+                        null,
+                        null,
+                    )
                     else -> PetOverlay.evaluate()
                 }
                 Log.i("DshPet", "probe ${PetOverlay.debugState()} status=${PetOverlay.status()}")

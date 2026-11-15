@@ -195,6 +195,18 @@ object LiveActivity {
         )
     }
 
+    /**
+     * The island draws the notification's title and measures it: every character widens it by
+     * about 28 dp up to half the screen (698 px here), so a conversation's name pushed it across
+     * the status bar. The title is the activity word instead (「工作中」「待确认」「完成」, 2–4
+     * characters); the conversation's name is the card's line, which the island ignores.
+     */
+    internal fun titleOf(c: LiveContent): String = c.chip ?: LiveContent.clipTitle(c.title)
+
+    /** The card's line: the conversation's name (or phone control's action) under [titleOf]. */
+    internal fun textOf(c: LiveContent): String =
+        if (c.kind == LiveContent.Kind.PHONE) c.text.ifEmpty { c.title } else c.title
+
     private fun post(ctx: Context, c: LiveContent) {
         val nm = nm(ctx)
         ensureChannel(ctx, nm)
@@ -203,8 +215,8 @@ object LiveActivity {
         val builder = Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_dsh)
             .setColor(color)
-            .setContentTitle(c.title)
-            .setContentText(c.text.ifEmpty { null })
+            .setContentTitle(titleOf(c))
+            .setContentText(textOf(c).ifEmpty { null })
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(if (c.busy) Notification.CATEGORY_PROGRESS else Notification.CATEGORY_STATUS)
@@ -223,14 +235,14 @@ object LiveActivity {
                         .setProgressSegments(listOf(Notification.ProgressStyle.Segment(1).setColor(color)))
                         .setProgressIndeterminate(true)
                 } else {
-                    Notification.BigTextStyle().bigText(c.text)
+                    Notification.BigTextStyle().bigText(textOf(c))
                 },
             )
             c.chipWords?.let(builder::setShortCriticalText)
         } else if (c.busy) {
             builder.setProgress(0, 0, true)
         } else {
-            builder.setStyle(Notification.BigTextStyle().bigText(c.text))
+            builder.setStyle(Notification.BigTextStyle().bigText(textOf(c)))
         }
         if (c.kind == LiveContent.Kind.PHONE && c.phoneTaskId != null) {
             val stop = PendingIntent.getService(

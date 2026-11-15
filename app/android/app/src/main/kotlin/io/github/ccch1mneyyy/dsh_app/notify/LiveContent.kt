@@ -60,10 +60,10 @@ data class LiveContent(
             fun str(key: String, max: Int) = (m[key] as? String)?.takeIf { it.isNotEmpty() }?.take(max)
             return LiveContent(
                 kind = kind,
-                title = clipTitle(title),
+                title = title.take(TITLE_MAX),
                 text = str("text", TEXT_MAX).orEmpty(),
                 chip = str("chip", CHIP_MAX),
-                publicText = str("publicText", TEXT_MAX) ?: clipTitle(title),
+                publicText = str("publicText", TEXT_MAX) ?: title.take(TITLE_MAX),
                 sinceMs = (m["sinceMs"] as? Number)?.toLong()?.takeIf { it > 0 },
                 packId = str("packId", 64)?.takeIf { it != "none" },
                 mood = str("mood", 32) ?: "idle",
@@ -122,7 +122,7 @@ data class LiveContent(
          * or sixteen Latin ones. Longer titles push the island across the status bar and leave
          * the elided part as a blank gap.
          */
-        const val TITLE_MAX_COLUMNS = 16
+        const val TITLE_MAX_COLUMNS = 10
         const val TEXT_MAX = 160
         /** Android shows a chip's text whole up to about seven characters. */
         const val CHIP_MAX = 12

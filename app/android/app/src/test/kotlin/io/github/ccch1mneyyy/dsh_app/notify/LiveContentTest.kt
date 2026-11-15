@@ -11,7 +11,7 @@ import org.junit.Test
 class LiveContentTest {
     private val running = mapOf(
         "kind" to "running",
-        "title" to "修一下登录页",
+        "title" to "修登录页",
         "text" to "正在工作 · 2 个对话在跑",
         "chip" to "工作中",
         "publicText" to "DSH 正在工作",
@@ -25,7 +25,7 @@ class LiveContentTest {
     @Test fun readsTheAgentsActivity() {
         val c = LiveContent.fromMap(running)!!
         assertEquals(LiveContent.Kind.RUNNING, c.kind)
-        assertEquals("修一下登录页", c.title)
+        assertEquals("修登录页", c.title)
         assertEquals("工作中", c.chip)
         assertEquals(1_793_000_000_000L, c.sinceMs)
         assertEquals("deepy", c.packId)
@@ -51,19 +51,19 @@ class LiveContentTest {
 
     @Test fun longTextIsCut() {
         val c = LiveContent.fromMap(running + ("title" to "长".repeat(500)) + ("chip" to "很长很长很长很长很长的胶囊"))!!
-        assertEquals("长".repeat(7) + "…", c.title)
+        assertEquals(LiveContent.TITLE_MAX, c.title.length)
         assertEquals(LiveContent.CHIP_MAX, c.chip!!.length)
     }
 
     @Test fun theTitleFitsTheIsland() {
-        // Six CJK characters: within the sixteen columns, untouched.
-        assertEquals("修一下登录页", LiveContent.clipTitle("修一下登录页"))
+        // Four CJK characters: within the ten columns, untouched.
+        assertEquals("修登录页", LiveContent.clipTitle("修登录页"))
         // Seven fit beside the ellipsis, so the eighth makes way for it.
-        assertEquals("云崽机器人适配…", LiveContent.clipTitle("云崽机器人适配器空间检查"))
+        assertEquals("云崽机器…", LiveContent.clipTitle("云崽机器人适配器空间检查"))
         // Latin takes one column each.
-        assertEquals("Fix the login…", LiveContent.clipTitle("Fix the login page"))
+        assertEquals("Fix the…", LiveContent.clipTitle("Fix the login page"))
         // Whole code points only: half an emoji is not a title.
-        assertEquals("🐳".repeat(7) + "…", LiveContent.clipTitle("🐳".repeat(8)))
+        assertEquals("🐳".repeat(4) + "…", LiveContent.clipTitle("🐳".repeat(8)))
         // Whitespace collapses, and a title that already fits keeps its line.
         assertEquals("a b", LiveContent.clipTitle(" a \n b "))
     }
@@ -77,6 +77,20 @@ class LiveContentTest {
         assertEquals("完成", done.chipWords)
         assertTrue(done.ending)
         assertFalse(done.busy)
+    }
+
+    @Test fun theIslandGetsTheActivityWordAndTheCardTheName() {
+        val c = LiveContent.fromMap(running)!!
+        // The island measures the title: a status word stays a few characters wide.
+        assertEquals("工作中", LiveActivity.titleOf(c))
+        assertEquals("修登录页", LiveActivity.textOf(c))
+        assertEquals("待确认", LiveActivity.titleOf(c.copy(kind = LiveContent.Kind.WAITING, chip = "待确认")))
+        // Phone control keeps its action line.
+        val phone = LiveContent(LiveContent.Kind.PHONE, "DSH 正在操作手机", "点按「发送」", "操作中", "x")
+        assertEquals("操作中", LiveActivity.titleOf(phone))
+        assertEquals("点按「发送」", LiveActivity.textOf(phone))
+        // No word from Dart: the (clipped) title still carries it.
+        assertEquals("修登录页", LiveActivity.titleOf(c.copy(chip = null)))
     }
 
     @Test fun phoneControlOutranksTheAgent() {
@@ -101,7 +115,7 @@ class LiveContentTest {
         assertEquals(XiaomiFocus.PIC_ICON, (big["picInfo"] as Map<*, *>)["pic"])
         assertEquals("待确认", (big["textInfo"] as Map<*, *>)["title"])
         val base = v2["baseInfo"] as Map<*, *>
-        assertEquals("修一下登录页", base["title"])
+        assertEquals("修登录页", base["title"])
         assertEquals("运行：git push", base["content"])
     }
 
