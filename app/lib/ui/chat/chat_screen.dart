@@ -42,6 +42,7 @@ import '../../state/drawer_view_state.dart';
 import '../../state/engine_control.dart';
 import '../../state/engine_settings_state.dart' show engineSettingsProvider;
 import '../../state/features_state.dart' show agentPresetsProvider, permissionStateProvider;
+import '../../state/goal_dock_state.dart' show goalDockProvider;
 import '../../state/hosts_state.dart' show HostKind, HostRef, activeHostProvider;
 import '../../state/media_generation.dart';
 import '../../state/mention_state.dart';
@@ -1769,12 +1770,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
     final typing =
         MediaQuery.sizeOf(context).height < WindowClass.compactHeight && MediaQuery.viewInsetsOf(context).bottom > 0;
     // 「自动允许中」/「完全权限」 ride on the bar right above the composer, not a
-    // row of their own: beside the activity strip while a reply generates, at
-    // the start of the capsule row otherwise. Their own row only where neither
-    // shows (read only; a phone on its side typing folds both away).
+    // row of their own: beside the dock (todo, goal, the run's activity strip)
+    // whenever it shows a bar, else at the start of the capsule row. Their own
+    // row only while a phone on its side types.
     final running = chat?.running ?? false;
-    final pillsBesideStrip = sessionId != null && running && !typing;
-    final pillsInCapsules = !readOnly && !running && !typing;
+    final dockBar =
+        sessionId != null &&
+        !typing &&
+        (running ||
+            ref.watch(chatProvider(sessionId).select((s) => s.todos?.isNotEmpty ?? false)) ||
+            ref.watch(goalDockProvider(sessionId)) != null);
+    final pillsBesideStrip = dockBar;
+    final pillsInCapsules = !readOnly && !running && !typing && !dockBar;
     final composerPills = _composerPills(
       sessionId,
       autoApprove: chat?.autoApprove ?? false,
