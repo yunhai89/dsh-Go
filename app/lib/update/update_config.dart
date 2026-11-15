@@ -1,27 +1,25 @@
 /// Where in-app updates come from. Everything network-facing about updates is
 /// configured here; the conventions and trade-offs are in `docs/release.md`.
 ///
-/// Every build asks our own copy of the release files first
-/// ([updateDownloadOrigin]: `/update.json`, `/download/<version>/<file>`), then
-/// GitHub and the public accelerators, and the rate-limited GitHub API last.
-/// Beta builds carry a channel token (`--dart-define=DSH_BETA_CHANNEL_TOKEN`,
-/// put in by `tooling/build-apk.sh`): they ask the beta channel before all of
-/// that ([UpdateChannel], `go.dshtui.com/beta/update.json`,
-/// docs/design/share-links.md) and download from it with the token.
+/// The fork has no release-file mirror or beta channel of its own, so public
+/// builds ask GitHub and its public accelerators. The rate-limited GitHub API
+/// is the last fallback. A deployment can add its own copy with
+/// `DSH_UPDATE_MIRROR` / `DSH_UPDATE_FEED`; beta builds need an explicit
+/// `DSH_BETA_CHANNEL_ORIGIN`.
 ///
 /// Build-time overrides (no code change needed):
 /// - `--dart-define=DSH_BETA_CHANNEL_ORIGIN=https://example.com` moves the beta
 ///   channel;
-/// - `--dart-define=DSH_UPDATE_MIRROR=https://example.com` moves the copy of
-///   the release files (empty string = none);
+/// - `--dart-define=DSH_UPDATE_MIRROR=https://example.com` adds a copy of the
+///   release files (empty string = none);
 /// - `--dart-define=DSH_UPDATE_FEED=https://example.com/dsh/update.json`
 ///   asks another manifest in place of the copy's (empty string = none);
 /// - `--dart-define=DSH_UPDATE_MIRRORS=https://a.example/,https://b.example/`
 ///   replaces the public GitHub accelerator list (empty string = none).
 library;
 
-/// GitHub repository the releases live in.
-const updateRepo = 'ccch1mneyyy/dsh-go';
+/// GitHub repository this fork's releases live in.
+const updateRepo = 'yunhai89/dsh-Go';
 
 /// `releases/latest` of the REST API: tag, notes, assets with sizes and
 /// SHA-256 digests. Unauthenticated: 60 requests per hour per IP.
@@ -38,14 +36,14 @@ Uri githubLatestAsset(String name) => Uri.parse('https://github.com/$updateRepo/
 Uri githubReleaseAsset(String tag, String name) =>
     Uri.parse('https://github.com/$updateRepo/releases/download/$tag/$name');
 
-/// The share host (services/share-worker). It serves the beta channel under
-/// `/beta/`; public files come from [updateDownloadOrigin].
-const updateMirrorOrigin = 'https://go.dshtui.com';
+/// Beta channel origin. Empty in the fork: no server is shipped with it, so a
+/// beta build must pass `DSH_BETA_CHANNEL_ORIGIN` explicitly.
+const updateMirrorOrigin = '';
 
-/// Our public copy of the release files (an R2 bucket): `/update.json`, the
-/// latest public manifest with absolute asset URLs, and
-/// `/download/<version>/<file>` for every file of every release.
-const updateDownloadOrigin = 'https://dl.dshtui.com';
+/// Self-hosted copy of the release files. Empty in the fork: releases are read
+/// from GitHub (and its accelerators) unless a build supplies
+/// `DSH_UPDATE_MIRROR`.
+const updateDownloadOrigin = '';
 
 /// The beta channel: `<origin>/beta/update.json` and `<origin>/beta/<version>/<file>`,
 /// both behind `Authorization: Bearer <token>`. The token is compiled into beta

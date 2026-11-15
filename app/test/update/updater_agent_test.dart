@@ -51,7 +51,7 @@ void main() {
   test('only the beta channel hears the version and ABI', () async {
     // The channel is down: the check goes on to GitHub.
     final http = FakeHttp({_feed: (_, _) => textResponse('', status: 503)});
-    final checker = UpdateChecker(http: http, sources: buildUpdateSources(channelToken: _token), userAgent: _agent);
+    final checker = UpdateChecker(http: http, sources: buildUpdateSources(mirror: 'https://dl.dshtui.com', channelToken: _token, channelOrigin: 'https://go.dshtui.com'), userAgent: _agent);
     await checker.check();
     expect(http.requests.length, greaterThan(1));
     for (final (url, headers) in http.requests) {
@@ -71,7 +71,7 @@ void main() {
         updateInstallerProvider.overrideWithValue(
           FakeInstaller(app: const InstalledApp(versionName: '0.9.9', versionCode: 10301000, abi: 'arm64')),
         ),
-        updateSourcesProvider.overrideWithValue(buildUpdateSources(channelToken: _token)),
+        updateSourcesProvider.overrideWithValue(buildUpdateSources(mirror: 'https://dl.dshtui.com', channelToken: _token, channelOrigin: 'https://go.dshtui.com')),
         updateClockProvider.overrideWithValue(() => DateTime(2026, 10, 30, 9)),
         updateFlavorNameProvider.overrideWithValue('arm64'),
         updateDirectoryProvider.overrideWithValue(() async => dir),
