@@ -51,8 +51,21 @@ class LiveContentTest {
 
     @Test fun longTextIsCut() {
         val c = LiveContent.fromMap(running + ("title" to "长".repeat(500)) + ("chip" to "很长很长很长很长很长的胶囊"))!!
-        assertEquals(LiveContent.TITLE_MAX, c.title.length)
+        assertEquals("长".repeat(7) + "…", c.title)
         assertEquals(LiveContent.CHIP_MAX, c.chip!!.length)
+    }
+
+    @Test fun theTitleFitsTheIsland() {
+        // Six CJK characters: within the sixteen columns, untouched.
+        assertEquals("修一下登录页", LiveContent.clipTitle("修一下登录页"))
+        // Seven fit beside the ellipsis, so the eighth makes way for it.
+        assertEquals("云崽机器人适配…", LiveContent.clipTitle("云崽机器人适配器空间检查"))
+        // Latin takes one column each.
+        assertEquals("Fix the login…", LiveContent.clipTitle("Fix the login page"))
+        // Whole code points only: half an emoji is not a title.
+        assertEquals("🐳".repeat(7) + "…", LiveContent.clipTitle("🐳".repeat(8)))
+        // Whitespace collapses, and a title that already fits keeps its line.
+        assertEquals("a b", LiveContent.clipTitle(" a \n b "))
     }
 
     @Test fun aRunsChipShowsItsClockAndTheRestTheirWords() {

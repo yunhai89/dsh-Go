@@ -48,6 +48,7 @@ AOSP 16.0 / QPR1 / QPR2 / 17 的 `Notification.hasPromotableCharacteristics()` �
 - 点击打开宠物的「最相关对话」，和点悬浮宠物去的是同一个地方。
 - 审批按钮仍只放在「等你确认」通知上，实时活动不重复放。
 - 锁屏隐藏敏感内容时只显示「DSH 正在干活」这类泛化文字，标题照 `alertTitle` 脱敏。
+- 通知标题按 16 个显示列截断（CJK、emoji 算两列，省略号算在内，`LiveContent.clipTitle`）：小米超级岛拿标题量宽度，标题多长岛就多宽，被省略的那半截还会留成一段空白。`TITLE_MAX_COLUMNS` 调这个上限。
 
 ### 2.2 开关
 
