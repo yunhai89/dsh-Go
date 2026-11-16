@@ -23,10 +23,11 @@ const maxThumbnailBytes = 8 * 1024 * 1024;
 
 /// Largest remote image fetched for a file card's thumbnail.
 ///
-/// A 40–120 px card does not need the original: a multi-megabyte PNG over a
-/// remote Host is a full download (and SSH decryption) for a few pixels. Past
-/// this, the card shows its type icon and the file opens on tap.
-const maxArtifactThumbnailBytes = 1024 * 1024;
+/// A 40–120 px card does not need the original, but normal screenshots and
+/// generated PNGs are a few MB. AEAD decryption now runs off the UI isolate,
+/// so these small originals are safe to fetch for the card; only genuinely
+/// large files fall back to the type icon and open on tap.
+const maxArtifactThumbnailBytes = 3 * 1024 * 1024;
 
 /// Why an artifact action could not run (beyond Host and platform errors).
 class ArtifactError implements Exception {

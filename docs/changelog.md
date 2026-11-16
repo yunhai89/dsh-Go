@@ -2,6 +2,18 @@
 
 每个版本先中文、后英文。发版时把对应版本的正文（不含版本标题）作为 Release 正文，见 `docs/release.md`。
 
+## 1.2.1 · 2026-11-16
+
+### 中文
+
+- **恢复文件卡缩略图。** 1.2.0 把远程文件卡的缩略图上限压到 1 MB，ComfyUI 这类 1.4 MB 的 PNG 只剩类型图标。现在 SSH AEAD 解密已经在后台 isolate，文件卡缩略图上限恢复到 3 MB：常见截图和生成图正常显示，超过 3 MB 的才显示类型图标、点开再看原图。首屏仍只加载可见的文件卡，内联图片仍按视口懒加载。
+- **验证。** 在 OnePlus 7 / Android 12 上打开 ComfyUI 会话，4 张 1.3–1.5 MB 缩略图正常显示，冷启动和立即点按无 ANR；大文件仍可点开预览。
+
+### English
+
+- **File-card thumbnails are back.** 1.2.0 capped remote thumbnails at 1 MB, so the 1.4 MB ComfyUI PNGs showed only a type icon. With SSH AEAD decryption now in a background isolate, the card limit is back to 3 MB: ordinary screenshots and generated images show their thumbnail, and only files above 3 MB fall back to the type icon and open full size on tap. The first screen still loads only visible file cards, and inline images still load lazily by viewport.
+- **Verification.** On a OnePlus 7 / Android 12, the four 1.3–1.5 MB thumbnails in the ComfyUI chat render, and a cold start plus immediate tap has no ANR; larger files still open in the preview.
+
 ## 1.2.0 · 2026-11-16
 
 ### 中文
