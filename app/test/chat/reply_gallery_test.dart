@@ -76,6 +76,9 @@ class _ReplyImages implements WorkspaceImageReader {
 }
 
 Future<void> _decodeInline(WidgetTester tester) async {
+  // Images first enter the viewport after a frame; decode what is now built.
+  await tester.pump();
+  await tester.pump();
   final images = find.byType(Image);
   await tester.runAsync(() async {
     for (final element in images.evaluate().toList()) {

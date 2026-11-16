@@ -50,6 +50,8 @@ App 以 APK 分发、不上商店，更新靠 App 自己查 GitHub Releases、�
 
 版本比较按 semver：预发布版低于正式版（`1.3.0-beta.1 < 1.3.0`），`+N` 只在两边都有时才参与比较（GitHub API 只给 tag，不带 `+N`）。所以 **同一个版本名重新打包不会被当成新版本**，要发就升版本名。
 
+本 fork 的三段含义：`x` 架构变动（协议、存储格式、运行时等不兼容变化），`y` P0 事故修复，`z` 普通 bug 修复。升 `x` 或 `y` 后后面的段归零；例如 1.1.1 的 P0 修复发 1.2.0，普通 bug 修复发 1.2.1。
+
 ## 构建号
 
 所有 APK，不论开发包还是正式包，一律用 `tooling/build-apk.sh` 出：
@@ -77,7 +79,7 @@ versionCode = (年 - 2026) × 10^8 + MMDDhhmm      时钟固定按 UTC+8
 
 ## 发版步骤
 
-1. **改版本名**：`app/pubspec.yaml` 的 `version:`，版本名按 semver 升；`+1` 不动。之后打的开发包也带新版本名，不会被提示「更新」到这一版。
+1. **改版本名**：按上面的规则改 `app/pubspec.yaml` 的 `version:`（`+1` 不动）；之后打的开发包也带新版本名，不会被提示「更新」到这一版。
    - **同步使用说明**：按本版界面改动更新 `docs/guide/`，把 `docs/guide/README.md` 的 `> dsh-go X.Y.Z` 改成新版本名，`python3 app/tool/guide_sync.py` 重新生成 App 内置技能，`python3 app/tool/guide_sync.py --check` 通过再打包（它核对入口路径、界面文字、页面链接与版本号）。
 2. **只打包 arm64 正式版**（运行时要先 `runtime/build-runtime.sh` 产出 `runtime/out/`）。x64 仅供必要的本地模拟器验证，不上传、不放入正式更新清单：
 

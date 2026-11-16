@@ -100,6 +100,7 @@ void main() {
         '_remoteChaChaCipher',
         OpenSSHChaCha20Poly1305(key),
       );
+      setPrivate(receiver, '_remoteChaChaKey', key);
       // The receiver must be past key exchange, otherwise the packet is
       // treated as an unexpected message during kex and never delivered.
       setPrivate(receiver, '_kexInProgress', false);

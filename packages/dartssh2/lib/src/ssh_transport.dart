@@ -19,6 +19,7 @@ import 'package:dartssh2/src/ssh_algorithm.dart';
 import 'package:dartssh2/src/ssh_kex.dart';
 import 'package:dartssh2/src/utils/bigint.dart';
 import 'package:dartssh2/src/utils/cipher_ext.dart';
+import 'package:dartssh2/src/crypto/aead_decryptor.dart';
 import 'package:dartssh2/src/utils/chunk_buffer.dart';
 import 'package:dartssh2/src/ssh_kex_utils.dart';
 import 'package:dartssh2/src/ssh_packet.dart';
@@ -255,18 +256,18 @@ class SSHTransport {
 
   void _resetLocalCompression() {
     _localCompression?.close();
-    _localCompression = _authenticated &&
-            _localCompressionName == 'zlib@openssh.com'
-        ? SSHZlib(compress: true)
-        : null;
+    _localCompression =
+        _authenticated && _localCompressionName == 'zlib@openssh.com'
+            ? SSHZlib(compress: true)
+            : null;
   }
 
   void _resetRemoteCompression() {
     _remoteCompression?.close();
-    _remoteCompression = _authenticated &&
-            _remoteCompressionName == 'zlib@openssh.com'
-        ? SSHZlib(compress: false)
-        : null;
+    _remoteCompression =
+        _authenticated && _remoteCompressionName == 'zlib@openssh.com'
+            ? SSHZlib(compress: false)
+            : null;
   }
 
   void _activateCompression() {
@@ -329,6 +330,13 @@ class SSHTransport {
 
   /// OpenSSH ChaCha20-Poly1305 context for packets received from the other side.
   OpenSSHChaCha20Poly1305? _remoteChaChaCipher;
+
+  /// Raw OpenSSH ChaCha20-Poly1305 key, kept for the background decryptor.
+  Uint8List? _remoteChaChaKey;
+
+  /// Packet decryption off the UI isolate. Started on the first AEAD packet.
+  AeadDecryptor? _aeadDecryptor;
+  Future<AeadDecryptor>? _aeadDecryptorStarting;
 
   /// The cipher key derived for encrypting outgoing data.
   Uint8List? _localCipherKey;
@@ -516,7 +524,8 @@ class SSHTransport {
       // Verify that the payload length is a multiple of the block size
       if (payloadToEncrypt.length % blockSize != 0) {
         throw StateError(
-            'Payload length ${payloadToEncrypt.length} is not a multiple of block size $blockSize');
+          'Payload length ${payloadToEncrypt.length} is not a multiple of block size $blockSize',
+        );
       }
 
       // Encrypt the payload
@@ -567,10 +576,7 @@ class SSHTransport {
   }
 
   /// Sends a packet using the OpenSSH ChaCha20-Poly1305 construction.
-  void _sendChaChaPacket(
-    Uint8List data,
-    OpenSSHChaCha20Poly1305 cipher,
-  ) {
+  void _sendChaChaPacket(Uint8List data, OpenSSHChaCha20Poly1305 cipher) {
     final paddingLength = _alignedPaddingLength(
       data.length,
       OpenSSHChaCha20Poly1305.blockSize,
@@ -580,11 +586,7 @@ class SSHTransport {
     ByteData.sublistView(packet, 0, 4).setUint32(0, packetLength);
     packet[4] = paddingLength;
     packet.setRange(5, 5 + data.length, data);
-    packet.setRange(
-      5 + data.length,
-      packet.length,
-      randomBytes(paddingLength),
-    );
+    packet.setRange(5 + data.length, packet.length, randomBytes(paddingLength));
 
     _writeSocket(cipher.encryptPacket(packet, _localPacketSN.value));
   }
@@ -594,8 +596,10 @@ class SSHTransport {
   /// Constructs the packet length and padding, generates random padding bytes,
   /// encrypts the payload with GCM, and writes the packet to the socket.
   void _sendAeadPacket(Uint8List data, SSHCipherType cipherType) {
-    final paddingLength =
-        _alignedPaddingLength(data.length, cipherType.blockSize);
+    final paddingLength = _alignedPaddingLength(
+      data.length,
+      cipherType.blockSize,
+    );
     final packetLength = 1 + data.length + paddingLength;
 
     final aad = Uint8List(4)..buffer.asByteData().setUint32(0, packetLength);
@@ -626,6 +630,39 @@ class SSHTransport {
   int _alignedPaddingLength(int payloadLength, int align) {
     final paddingLength = align - ((payloadLength + 1) % align);
     return paddingLength < 4 ? paddingLength + align : paddingLength;
+  }
+
+  Future<AeadDecryptor> _aeadWorker() async {
+    final existing = _aeadDecryptor;
+    if (existing != null) return existing;
+    final starting = _aeadDecryptorStarting ??= spawnAeadDecryptor();
+    try {
+      final worker = await starting;
+      if (isClosed) {
+        await worker.close();
+        throw SSHStateError('Transport is closed');
+      }
+      return _aeadDecryptor = worker;
+    } finally {
+      if (identical(_aeadDecryptorStarting, starting)) {
+        _aeadDecryptorStarting = null;
+      }
+    }
+  }
+
+  /// Releases the crypto isolate when this transport closes. A worker still
+  /// starting is closed as soon as it exists.
+  void _closeAeadDecryptor() {
+    final running = _aeadDecryptor;
+    final starting = _aeadDecryptorStarting;
+    _aeadDecryptor = null;
+    _aeadDecryptorStarting = null;
+    if (running != null) unawaited(running.close());
+    if (starting != null) {
+      unawaited(
+        starting.then<void>((worker) => worker.close()).catchError((_) {}),
+      );
+    }
   }
 
   /// Encrypts or decrypts [input] using the AES-GCM AEAD block cipher.
@@ -669,6 +706,7 @@ class SSHTransport {
   Future<void> close() async {
     printDebug?.call('SSHTransport.close');
     if (isClosed) return;
+    _closeAeadDecryptor();
     _socketSubscription?.cancel();
     _socketSubscription = null;
     _closeCompression();
@@ -689,6 +727,7 @@ class SSHTransport {
   void closeWithError(SSHError error, [StackTrace? stackTrace]) {
     printDebug?.call('SSHTransport.closeWithError $error');
     if (isClosed) return;
+    _closeAeadDecryptor();
     _socketSubscription?.cancel();
     _socketSubscription = null;
     _closeCompression();
@@ -723,9 +762,11 @@ class SSHTransport {
   /// Flush encoded bytes already queued for the socket.
   Future<void> flush() {
     final pending = _pendingSocketWrite;
-    return _trackSocketWrite(pending == null
-        ? Future<void>.sync(socket.flush)
-        : pending.then((_) => socket.flush()));
+    return _trackSocketWrite(
+      pending == null
+          ? Future<void>.sync(socket.flush)
+          : pending.then((_) => socket.flush()),
+    );
   }
 
   /// Subscribes to the underlying socket stream to handle incoming data and status events.
@@ -882,7 +923,7 @@ class SSHTransport {
     printDebug?.call('SSHTransport._processPackets');
 
     while (_buffer.isNotEmpty && !isClosed) {
-      final payload = _consumePacket();
+      final payload = await _consumePacketAsync();
       if (payload == null) {
         break;
       }
@@ -920,16 +961,71 @@ class SSHTransport {
         : _consumeEncryptedPacket();
   }
 
+  /// The production read path: AEAD packets are decrypted by the background
+  /// worker, everything else stays on this isolate. [_consumePacket] remains
+  /// for the non-AEAD formats and for tests that drive one packet directly.
+  Future<Uint8List?> _consumePacketAsync() async {
+    final cipherType = _remoteCipherType;
+    if (cipherType == SSHCipherType.chacha20poly1305 &&
+        _remoteChaChaCipher != null) {
+      return _consumeChaChaPacketAsync();
+    }
+    if (cipherType != null &&
+        cipherType.isAead &&
+        _remoteCipherKey != null &&
+        _remoteIV != null) {
+      return _consumeAeadPacketAsync(cipherType);
+    }
+    return _consumePacket();
+  }
+
   /// Consumes and decrypts one OpenSSH ChaCha20-Poly1305 packet.
   Uint8List? _consumeChaChaPacket() {
+    final taken = _takeChaChaPacket();
+    if (taken == null) return null;
+    late Uint8List packet;
+    try {
+      packet = _remoteChaChaCipher!.decryptPacket(
+        taken.encryptedPacket,
+        taken.sequence,
+      );
+    } on InvalidCipherTextException {
+      throw SSHPacketError('AEAD authentication failed');
+    }
+    return _parseChaChaPayload(taken.packetLength, packet);
+  }
+
+  Future<Uint8List?> _consumeChaChaPacketAsync() async {
+    final taken = _takeChaChaPacket();
+    if (taken == null) return null;
+    final key = _remoteChaChaKey;
+    if (key == null) {
+      throw SSHStateError('OpenSSH ChaCha20-Poly1305 key is not initialized');
+    }
+    final worker = await _aeadWorker();
+    try {
+      final packet = await worker.decryptChaCha(
+        key: key,
+        sequence: taken.sequence,
+        input: taken.encryptedPacket,
+      );
+      return _parseChaChaPayload(taken.packetLength, packet);
+    } on AeadDecryptorException catch (error) {
+      _rethrowAead(error);
+    }
+  }
+
+  ({int packetLength, Uint8List encryptedPacket, int sequence})?
+      _takeChaChaPacket() {
     if (_buffer.length < OpenSSHChaCha20Poly1305.encryptedLengthSize) {
       return null;
     }
 
     final cipher = _remoteChaChaCipher!;
+    final sequence = _remotePacketSN.value;
     final packetLength = cipher.decryptPacketLength(
       _buffer.view(0, OpenSSHChaCha20Poly1305.encryptedLengthSize),
-      _remotePacketSN.value,
+      sequence,
     );
     _verifyPacketLength(packetLength);
     if (packetLength % OpenSSHChaCha20Poly1305.blockSize != 0) {
@@ -946,17 +1042,20 @@ class SSHTransport {
       return null;
     }
 
-    late Uint8List packet;
-    try {
-      packet = cipher.decryptPacket(
-        _buffer.view(0, encryptedPacketLength),
-        _remotePacketSN.value,
-      );
-    } on InvalidCipherTextException {
-      throw SSHPacketError('AEAD authentication failed');
-    }
+    // Leave the receive buffer before awaiting the worker; the view would no
+    // longer be stable if more socket data arrived meanwhile.
+    final encryptedPacket = Uint8List.fromList(
+      _buffer.view(0, encryptedPacketLength),
+    );
     _buffer.skip(encryptedPacketLength);
+    return (
+      packetLength: packetLength,
+      encryptedPacket: encryptedPacket,
+      sequence: sequence,
+    );
+  }
 
+  Uint8List _parseChaChaPayload(int packetLength, Uint8List packet) {
     if (SSHPacket.readPacketLength(packet) != packetLength) {
       throw SSHPacketError('Decrypted packet length changed unexpectedly');
     }
@@ -1162,6 +1261,44 @@ class SSHTransport {
 
   /// Consumes and decrypts an AEAD-encrypted packet.
   Uint8List? _consumeAeadPacket(SSHCipherType cipherType) {
+    final taken = _takeAeadPacket(cipherType);
+    if (taken == null) return null;
+    late Uint8List plaintext;
+    try {
+      plaintext = _processAead(
+        key: _remoteCipherKey!,
+        iv: _remoteIV!,
+        sequence: taken.sequence,
+        aad: taken.aad,
+        input: taken.input,
+        forEncryption: false,
+      );
+    } on InvalidCipherTextException {
+      throw SSHPacketError('AEAD authentication failed');
+    }
+    return _parseAeadPayload(taken.packetLength, plaintext, cipherType);
+  }
+
+  Future<Uint8List?> _consumeAeadPacketAsync(SSHCipherType cipherType) async {
+    final taken = _takeAeadPacket(cipherType);
+    if (taken == null) return null;
+    final worker = await _aeadWorker();
+    try {
+      final plaintext = await worker.decryptGcm(
+        key: _remoteCipherKey!,
+        iv: _remoteIV!,
+        sequence: taken.sequence,
+        aad: taken.aad,
+        input: taken.input,
+      );
+      return _parseAeadPayload(taken.packetLength, plaintext, cipherType);
+    } on AeadDecryptorException catch (error) {
+      _rethrowAead(error);
+    }
+  }
+
+  ({int packetLength, Uint8List aad, Uint8List input, int sequence})?
+      _takeAeadPacket(SSHCipherType cipherType) {
     if (_buffer.length < 4) {
       return null;
     }
@@ -1174,30 +1311,29 @@ class SSHTransport {
       return null;
     }
 
-    // Views are safe here: aad is only read synchronously by _processAead
-    // below, and ciphertext/tag are copied into encryptedInput immediately.
-    final aad = _buffer.consumeView(4);
+    // Copy both the AAD and ciphertext: the receive buffer can grow while the
+    // worker decrypts, so a view into it is not stable across the await.
+    final aad = Uint8List.fromList(_buffer.consumeView(4));
     final ciphertext = _buffer.consumeView(packetLength);
     final tag = _buffer.consumeView(tagLength);
 
-    final encryptedInput = Uint8List(packetLength + tagLength)
+    final input = Uint8List(packetLength + tagLength)
       ..setRange(0, packetLength, ciphertext)
       ..setRange(packetLength, packetLength + tagLength, tag);
 
-    late Uint8List plaintext;
-    try {
-      plaintext = _processAead(
-        key: _remoteCipherKey!,
-        iv: _remoteIV!,
-        sequence: _remoteAeadPacketCount++,
-        aad: aad,
-        input: encryptedInput,
-        forEncryption: false,
-      );
-    } on InvalidCipherTextException {
-      throw SSHPacketError('AEAD authentication failed');
-    }
+    return (
+      packetLength: packetLength,
+      aad: aad,
+      input: input,
+      sequence: _remoteAeadPacketCount++,
+    );
+  }
 
+  Uint8List _parseAeadPayload(
+    int packetLength,
+    Uint8List plaintext,
+    SSHCipherType cipherType,
+  ) {
     final paddingLength = plaintext[0];
     final payloadLength = packetLength - paddingLength - 1;
     if (payloadLength < 0) {
@@ -1206,8 +1342,10 @@ class SSHTransport {
       );
     }
 
-    final minPaddingLength =
-        _alignedPaddingLength(payloadLength, cipherType.blockSize);
+    final minPaddingLength = _alignedPaddingLength(
+      payloadLength,
+      cipherType.blockSize,
+    );
     if (paddingLength < minPaddingLength) {
       throw SSHPacketError(
         'Invalid padding length: $paddingLength, expected: $minPaddingLength',
@@ -1215,6 +1353,13 @@ class SSHTransport {
     }
 
     return Uint8List.sublistView(plaintext, 1, 1 + payloadLength);
+  }
+
+  Never _rethrowAead(AeadDecryptorException error) {
+    if (error.authenticationFailed) {
+      throw SSHPacketError('AEAD authentication failed');
+    }
+    throw SSHInternalError(StateError(error.message));
   }
 
   /// Validates that the parsed packet length is within acceptable bounds.
@@ -1256,8 +1401,11 @@ class SSHTransport {
   ///
   /// For ETM (Encrypt-Then-MAC) algorithms, the MAC is calculated on the packet length and encrypted payload.
   /// For standard MAC algorithms, the MAC is calculated on the unencrypted packet.
-  void _verifyPacketMac(Uint8List payload, Uint8List actualMac,
-      {bool isEncrypted = false}) {
+  void _verifyPacketMac(
+    Uint8List payload,
+    Uint8List actualMac, {
+    bool isEncrypted = false,
+  }) {
     final macSize = _remoteMac!.macSize;
     if (actualMac.length != macSize) {
       throw ArgumentError.value(actualMac, 'mac', 'Invalid MAC size');
@@ -1383,6 +1531,7 @@ class SSHTransport {
       _remoteCipherType = cipherType;
       _remoteMacType = null;
       _remoteChaChaCipher = chachaCipher;
+      _remoteChaChaKey = key;
       _remoteCipherKey = null;
       _remoteIV = null;
       _decryptCipher = null;
@@ -1404,6 +1553,7 @@ class SSHTransport {
       _remoteCipherType = cipherType;
       _remoteMacType = null;
       _remoteChaChaCipher = null;
+      _remoteChaChaKey = null;
       _remoteCipherKey = cipherKey;
       _remoteIV = iv;
       _decryptCipher = null;
@@ -1430,6 +1580,7 @@ class SSHTransport {
     _remoteCipherType = cipherType;
     _remoteMacType = macType;
     _remoteChaChaCipher = null;
+    _remoteChaChaKey = null;
     _remoteCipherKey = cipherKey;
     _remoteIV = iv;
     _decryptCipher = decryptCipher;
@@ -1666,10 +1817,7 @@ class SSHTransport {
         // The peer said why it is going away. Surface that instead of letting
         // the caller see an unexplained disconnection.
         return closeWithError(
-          SSHDisconnectError(
-            disconnect.reasonCode,
-            disconnect.description,
-          ),
+          SSHDisconnectError(disconnect.reasonCode, disconnect.description),
         );
       case SSH_Message_Ignore.messageId:
         final ignore = SSH_Message_Ignore.decode(message);
@@ -2063,8 +2211,11 @@ class SSHTransport {
     final message = SSH_Message_KexDH_GexGroup.decode(payload);
     printTrace?.call('<- $socket: $message');
 
-    _kex =
-        await SSHKexDH.createAsync(p: message.p, g: message.g, secretBits: 256);
+    _kex = await SSHKexDH.createAsync(
+      p: message.p,
+      g: message.g,
+      secretBits: 256,
+    );
     _sendKexDHGexInit();
   }
 

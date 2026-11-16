@@ -18,8 +18,15 @@ import 'connection_state.dart';
 /// Largest file fetched from a remote Host for open / share / save.
 const maxRemoteArtifactBytes = 300 * 1024 * 1024;
 
-/// Largest remote image fetched just to draw a thumbnail.
+/// Largest remote image fetched just to draw a tool-result thumbnail.
 const maxThumbnailBytes = 8 * 1024 * 1024;
+
+/// Largest remote image fetched for a file card's thumbnail.
+///
+/// A 40–120 px card does not need the original: a multi-megabyte PNG over a
+/// remote Host is a full download (and SSH decryption) for a few pixels. Past
+/// this, the card shows its type icon and the file opens on tap.
+const maxArtifactThumbnailBytes = 1024 * 1024;
 
 /// Why an artifact action could not run (beyond Host and platform errors).
 class ArtifactError implements Exception {
@@ -227,12 +234,12 @@ class ArtifactFiles {
     if (conn == null) return null;
     if (!conn.isLocal) {
       final stat = await conn.client.statFile(sessionId, artifact.path);
-      if ((stat.bytes ?? maxThumbnailBytes + 1) > maxThumbnailBytes) {
+      if ((stat.bytes ?? maxArtifactThumbnailBytes + 1) > maxArtifactThumbnailBytes) {
         return null;
       }
     }
-    final file = await materialize(sessionId, artifact, maxBytes: maxThumbnailBytes);
-    if (await file.length() > maxThumbnailBytes) return null;
+    final file = await materialize(sessionId, artifact, maxBytes: maxArtifactThumbnailBytes);
+    if (await file.length() > maxArtifactThumbnailBytes) return null;
     return FileImage(file);
   }
 }

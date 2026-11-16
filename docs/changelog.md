@@ -2,6 +2,26 @@
 
 每个版本先中文、后英文。发版时把对应版本的正文（不含版本标题）作为 Release 正文，见 `docs/release.md`。
 
+## 1.2.0 · 2026-11-16
+
+### 中文
+
+- **修复 P0：SSH 会话里图片/文件多时，打开 App 卡死后闪退。** 打开 ComfyUI 这类包含多张内联图片和交付文件的会话时，App 会在首帧把整段回复里的图片和文件卡缩略图全部下载，SSH 的 AES-GCM 解密又跑在 UI 线程，主线程被占满后系统判无响应并强制结束。
+  - SSH 的 AEAD 解密移到独立的后台 isolate，UI 线程不再做 GCM/ChaCha 解密；传输顺序、重连和 rekey 不变。
+  - 内联图片只在接近视口时读取，屏幕外的图片等滚动到再加载；打开画廊仍能看到整段回复的全部图片。
+  - 远程文件卡的缩略图最多下载 1 MB，超过就显示类型图标，点开再看原图，不再为 40px 预览下载整张原图。
+- **版本号规则明确为 `x.y.z`：** `x` 表示架构变动，`y` 表示 P0 事故修复，`z` 表示普通 bug 修复。本版是 P0 修复，因此从 1.1.1 升到 1.2.0。
+- **验证。** 在 OnePlus 7 / Android 12 上复现并验证：修复前打开会话 + 立即点按会 ANR，网络峰值约 4.3 MB/s；修复后冷启动 + 立即点按无 ANR，首屏网络约几十 KB，滚动到图片才按需加载，画廊可翻完 9 张图。聊天测试 2211 个全部通过。
+
+### English
+
+- **P0 fix: opening an SSH chat with many images/files froze and then killed the app.** A conversation like the ComfyUI one has several inline images and delivered files. On the first frame the app downloaded every image in the reply plus full-size files for the tiny artifact thumbnails, while SSH AES-GCM decryption ran on the UI isolate; input timed out and the system force-finished the app.
+  - SSH AEAD decryption now runs in a dedicated background isolate. Packet order, reconnects and rekeying are unchanged; the UI thread no longer does GCM/ChaCha work.
+  - Inline images are read only when they get near the viewport; off-screen images load when scrolled to, and the full-screen gallery still lists every image in the reply.
+  - Remote file-card thumbnails download at most 1 MB. Larger files show their type icon and open full size on tap instead of downloading a whole PNG for a 40 px preview.
+- **Versioning is now explicitly `x.y.z`:** `x` for architecture changes, `y` for P0 incident fixes, `z` for ordinary bug fixes. This P0 fix moves from 1.1.1 to 1.2.0.
+- **Verification.** Reproduced and verified on a OnePlus 7 / Android 12: before the fix, opening the chat and tapping immediately caused an ANR with a ~4.3 MB/s network peak; after the fix, a cold start plus immediate tap has no ANR, the first screen transfers only tens of KB, images load on demand while scrolling, and the gallery pages through all 9 images. All 2211 chat tests pass.
+
 ## 1.1.0 · 2026-11-15
 
 ### 中文

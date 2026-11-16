@@ -61,6 +61,9 @@ void main() {
         overrides: [activeConnectionProvider.overrideWithValue(const AsyncData<HostConnection?>(null))],
       ),
     );
+    // The inline image enters the viewport after the first frame.
+    await tester.pump();
+    await tester.pump();
     final context = tester.element(find.byType(MarkdownImage));
     final inline = tester.widget<Image>(find.byType(Image)).image;
     await tester.runAsync(() => precacheImage(inline, context));

@@ -80,6 +80,16 @@ CI（`.github/workflows/ci.yml`）在 PR 上跑通用检查和改动涉及的部
 - Flutter widget 测试需要对应架构的 Flutter 引擎；只有桌面端（x86_64）而设备是 arm64 时，明确写"未运行"及原因。
 - 手机操控、PRoot、直接启动、更新安装相关改动必须在真机上验证；桌面结果不能替代。
 
+## 版本号（本 fork）
+
+版本名固定三段：`x.y.z`，tag 用 `vx.y.z`，APK、增量补丁和用户指南都使用同一个版本名。
+
+- `x`（major）：架构变动，例如协议、存储格式、运行时或最低系统要求变化；`x+1` 后 `y`、`z` 归零。
+- `y`（minor）：P0 事故修复；`y+1` 后 `z` 归零。
+- `z`（patch）：普通 bug 修复，`z+1`。
+
+发版前把 `app/pubspec.yaml` 的 `version:` 和 `docs/guide/README.md` 的 `> dsh-go x.y.z` 一起改成新版本名；`+N` 只是构建号占位，不动。构建号仍由 `tooling/build-apk.sh` 按构建时间生成。
+
 ## 代码审查原则
 
 审查 PR 或改动时，以**不引入新 Bug、最小必要改动、保持代码简洁**为核心：

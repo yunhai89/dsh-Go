@@ -172,8 +172,12 @@ class MarkdownGalleryScope extends InheritedWidget {
       if (element.widget is MarkdownGalleryScope) return;
       if (element is StatefulElement && element.state is _MarkdownImageState) {
         final image = element.state as _MarkdownImageState;
-        if (image._source is WorkspaceImageSource && image._engineUrl == null
-            ? image._workspaceGallery
+        // Workspace pictures enter the gallery by path, so an image that is
+        // still off-screen (and therefore not read yet) can load when paged to.
+        final workspace = image._source is WorkspaceImageSource && image._engineUrl == null;
+        final path = image._path;
+        if (workspace
+            ? path != null && image._error == null && previewModeOf(path) == PreviewMode.image && !isSvgUrl(path)
             : image._galleryImage != null) {
           images.add(image);
         }
@@ -462,12 +466,25 @@ class _MarkdownImageState extends ConsumerState<MarkdownImage> {
   /// Bumped by a retry, so a failed web image is fetched again.
   int _attempt = 0;
 
+  /// Whether this image has ever been close to the viewport. A tall reply can
+  /// hold many inline images; reading them all when the row is built sends a
+  /// burst of full-size files over a remote Host (and blocks the UI while the
+  /// tunnel decrypts them) before the person ever scrolls to them.
+  bool _onScreen = false;
+  bool _checkScheduled = false;
+  ScrollPosition? _position;
+
+  /// Load a little before the image scrolls in, so it is usually ready.
+  static const _preload = 200.0;
+
   String get _sizeKey => '${_sessionId ?? ''}\n${_path ?? widget.url}';
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _watchScrollable();
     _resolve();
+    _scheduleOnScreenCheck();
   }
 
   @override
@@ -475,8 +492,48 @@ class _MarkdownImageState extends ConsumerState<MarkdownImage> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.url != widget.url) {
       _source = imageSourceOf(widget.url);
+      _onScreen = false;
+      _watchScrollable();
       _resolve();
+      _scheduleOnScreenCheck();
     }
+  }
+
+  @override
+  void dispose() {
+    _position?.removeListener(_scheduleOnScreenCheck);
+    super.dispose();
+  }
+
+  void _watchScrollable() {
+    final position = Scrollable.maybeOf(context)?.position;
+    if (identical(position, _position)) return;
+    _position?.removeListener(_scheduleOnScreenCheck);
+    _position = position;
+    _position?.addListener(_scheduleOnScreenCheck);
+  }
+
+  void _scheduleOnScreenCheck() {
+    if (_onScreen || _checkScheduled) return;
+    _checkScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkScheduled = false;
+      if (mounted) _checkOnScreen();
+    });
+  }
+
+  void _checkOnScreen() {
+    if (_onScreen) return;
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.attached || !box.hasSize) return;
+    final rect = box.localToGlobal(Offset.zero) & box.size;
+    final screen = Offset.zero & MediaQuery.sizeOf(context);
+    if (!rect.overlaps(screen.inflate(_preload))) return;
+    setState(() => _onScreen = true);
+    _position?.removeListener(_scheduleOnScreenCheck);
+    _position = null;
+    // The source may have been resolved while this image was still offscreen.
+    _resolve();
   }
 
   void _resolve() {
@@ -494,7 +551,7 @@ class _MarkdownImageState extends ConsumerState<MarkdownImage> {
       _future = null;
       _loaded = null;
       _error = null;
-      if (next != null) _load();
+      if (next != null && _onScreen) _load();
       return;
     }
     _engineUrl = null;
@@ -520,7 +577,7 @@ class _MarkdownImageState extends ConsumerState<MarkdownImage> {
     if (sessionId == _sessionId && path == _path && (_future != null || _loaded != null)) return;
     _sessionId = sessionId;
     _path = path;
-    _load();
+    if (_onScreen) _load();
   }
 
   /// The session's working directory, when the app knows it. Only a chat
@@ -560,9 +617,6 @@ class _MarkdownImageState extends ConsumerState<MarkdownImage> {
 
   /// Original provider for a rendered bitmap; hidden/error/SVG tiles stay out.
   ImageProvider? _galleryImage;
-
-  /// Pending workspace bitmaps can be opened lazily by the artifact preview.
-  bool _workspaceGallery = false;
 
   void _retry() {
     _inlineProvider?.evict();
@@ -654,7 +708,6 @@ class _MarkdownImageState extends ConsumerState<MarkdownImage> {
         ? MarkdownImageFont.of(context) * ref.watch(emojiSizeProvider(client))
         : null;
     _galleryImage = null;
-    _workspaceGallery = false;
     // A media card above already shows this file: not a second time. Only
     // for a conversation already open (a previewed file never starts one).
     if (_source is WorkspaceImageSource &&
@@ -678,6 +731,13 @@ class _MarkdownImageState extends ConsumerState<MarkdownImage> {
         return _ImageError(name: name, message: message, action: l10n.chatImageTapToView, onTap: () => _open(null));
       }
       return _ImageError(name: name, message: message, action: l10n.chatImageTapToRetry, onTap: _retry);
+    }
+
+    // Keep the row's geometry but do not read an image that is still above or
+    // below the viewport. Scrolling (or any later layout) brings it in.
+    if (!_onScreen && _source is! UnsupportedImageSource) {
+      _scheduleOnScreenCheck();
+      return Semantics(image: true, label: name, child: placeholder());
     }
 
     Widget read() {
@@ -724,12 +784,6 @@ class _MarkdownImageState extends ConsumerState<MarkdownImage> {
           child = _raster(MemoryImage(bytes), placeholder: placeholder, failed: failed);
         }
       case WorkspaceImageSource():
-        _workspaceGallery =
-            _sessionId != null &&
-            _path != null &&
-            previewModeOf(_path!) == PreviewMode.image &&
-            _error == null &&
-            _loaded is! SvgImageBytes;
         child = read();
     }
     return Semantics(image: true, label: name, child: child);
@@ -770,7 +824,6 @@ class _MarkdownImageState extends ConsumerState<MarkdownImage> {
         },
         errorBuilder: (context, error, _) {
           _galleryImage = null;
-          _workspaceGallery = false;
           return failed(error);
         },
       ),

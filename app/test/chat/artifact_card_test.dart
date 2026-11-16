@@ -423,7 +423,7 @@ void main() {
       expect(await files.thumbnail('s1', '/home/me/out/a.svg'), isNull);
       expect(await files.thumbnail('s1', '/home/me/out/a.pdf'), isNull);
       expect(await files.thumbnail('s1', image.path), isA<FileImage>());
-      carrier.content = Uint8List(maxThumbnailBytes + 1);
+      carrier.content = Uint8List(maxArtifactThumbnailBytes + 1);
       carrier.version = 'big';
       expect(await files.thumbnail('s1', image.path), isNull);
     });
