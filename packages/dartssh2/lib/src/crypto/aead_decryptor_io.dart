@@ -7,7 +7,8 @@ import 'package:pointycastle/export.dart' show InvalidCipherTextException;
 import 'aead_decryptor_base.dart';
 import 'aead_decryptor_impl.dart';
 
-/// VM implementation: one long-lived isolate decrypts SSH packets.
+/// VM implementation: one long-lived isolate encrypts and decrypts SSH
+/// packets.
 ///
 /// The isolate is created per transport, on the first AEAD packet. Requests are
 /// small typed-data messages; packet order is preserved by the transport
@@ -122,6 +123,24 @@ class _IsolateAeadDecryptor implements AeadDecryptor {
   }
 
   @override
+  Future<Uint8List> encryptGcm({
+    required Uint8List key,
+    required Uint8List iv,
+    required int sequence,
+    required Uint8List aad,
+    required Uint8List input,
+  }) =>
+      _request([aeadKindGcmEncrypt, key, iv, sequence, aad, input]);
+
+  @override
+  Future<Uint8List> encryptChaCha({
+    required Uint8List key,
+    required int sequence,
+    required Uint8List input,
+  }) =>
+      _request([aeadKindChaChaEncrypt, key, null, sequence, null, input]);
+
+  @override
   Future<Uint8List> decryptGcm({
     required Uint8List key,
     required Uint8List iv,
@@ -181,14 +200,29 @@ void _aeadWorkerMain(SendPort main) {
     final id = message[0];
     if (id is! int) return;
     try {
-      final data = decryptAead(
-        kind: message[1] as int,
-        key: message[2] as Uint8List,
-        iv: message[3] as Uint8List?,
-        sequence: message[4] as int,
-        aad: message[5] as Uint8List?,
-        input: message[6] as Uint8List,
-      );
+      final kind = message[1] as int;
+      final key = message[2] as Uint8List;
+      final iv = message[3] as Uint8List?;
+      final sequence = message[4] as int;
+      final aad = message[5] as Uint8List?;
+      final input = message[6] as Uint8List;
+      final data = kind == aeadKindGcmEncrypt || kind == aeadKindChaChaEncrypt
+          ? encryptAead(
+              kind: kind,
+              key: key,
+              iv: iv,
+              sequence: sequence,
+              aad: aad,
+              input: input,
+            )
+          : decryptAead(
+              kind: kind,
+              key: key,
+              iv: iv,
+              sequence: sequence,
+              aad: aad,
+              input: input,
+            );
       main.send([id, data]);
     } on InvalidCipherTextException {
       main.send([id, null, 'auth']);

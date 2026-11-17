@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:math' show max;
 import 'dart:typed_data';
@@ -74,6 +75,36 @@ abstract class SSHKexPseudoAlgorithm {
 
   /// Sent by a server to ask for SSH_MSG_EXT_INFO (RFC 8308 §2.2).
   static const extInfoServer = 'ext-info-s';
+}
+
+/// One outgoing packet waiting for the background AEAD worker.
+///
+/// Keys, nonce material and the packet sequence number are captured when the
+/// packet is queued: a rekey can replace the transport's active keys while
+/// earlier packets are still waiting for the worker.
+class _OutboundAeadPacket {
+  _OutboundAeadPacket.chacha({
+    required this.key,
+    required this.sequence,
+    required this.input,
+  })  : iv = null,
+        aad = null,
+        isChaCha = true;
+
+  _OutboundAeadPacket.gcm({
+    required this.key,
+    required this.iv,
+    required this.sequence,
+    required this.aad,
+    required this.input,
+  }) : isChaCha = false;
+
+  final Uint8List key;
+  final Uint8List? iv;
+  final int sequence;
+  final Uint8List? aad;
+  final Uint8List input;
+  final bool isChaCha;
 }
 
 class SSHTransport {
@@ -372,6 +403,17 @@ class SSHTransport {
   /// across the entire SSH session and does not reset on rekey.
   int _localAeadPacketCount = 0;
 
+  /// Outgoing AEAD packets waiting for the background worker.
+  ///
+  /// Encryption used to run synchronously inside [sendPacket]; a multi-megabyte
+  /// upload then blocked the calling isolate for seconds. Only the single
+  /// [_outboundAeadDrain] touches the queue, so socket write order matches
+  /// packet order.
+  final _outboundAead = ListQueue<_OutboundAeadPacket>();
+
+  /// The running outbound pump, or `null` when the queue is empty.
+  Future<void>? _outboundAeadDrain;
+
   /// The invocation counter for remote AEAD (e.g. AES-GCM) packets.
   ///
   /// According to RFC 5647 Section 7.1, the invocation counter (used to derive
@@ -466,8 +508,9 @@ class SSHTransport {
     final localChaChaCipher = _localChaChaCipher;
     if (localCipherType == SSHCipherType.chacha20poly1305 &&
         localChaChaCipher != null) {
-      _sendChaChaPacket(data, localChaChaCipher);
+      final sequence = _localPacketSN.value;
       _localPacketSN.increase();
+      _queueChaChaPacket(data, localChaChaCipher, sequence);
       return;
     }
 
@@ -475,8 +518,9 @@ class SSHTransport {
         localCipherType.isAead &&
         _localCipherKey != null &&
         _localIV != null) {
-      _sendAeadPacket(data, localCipherType);
+      final sequence = _localAeadPacketCount++;
       _localPacketSN.increase();
+      _queueAeadPacket(data, localCipherType, sequence);
       return;
     }
 
@@ -575,8 +619,15 @@ class SSHTransport {
     _localPacketSN.increase();
   }
 
-  /// Sends a packet using the OpenSSH ChaCha20-Poly1305 construction.
-  void _sendChaChaPacket(Uint8List data, OpenSSHChaCha20Poly1305 cipher) {
+  /// Queues a packet for the OpenSSH ChaCha20-Poly1305 construction.
+  ///
+  /// The packet is encrypted by the background worker; only the packet
+  /// framing and padding happen on the calling isolate.
+  void _queueChaChaPacket(
+    Uint8List data,
+    OpenSSHChaCha20Poly1305 cipher,
+    int sequence,
+  ) {
     final paddingLength = _alignedPaddingLength(
       data.length,
       OpenSSHChaCha20Poly1305.blockSize,
@@ -588,14 +639,22 @@ class SSHTransport {
     packet.setRange(5, 5 + data.length, data);
     packet.setRange(5 + data.length, packet.length, randomBytes(paddingLength));
 
-    _writeSocket(cipher.encryptPacket(packet, _localPacketSN.value));
+    _enqueueAead(_OutboundAeadPacket.chacha(
+      key: cipher.keyMaterial,
+      sequence: sequence,
+      input: packet,
+    ));
   }
 
-  /// Sends a packet encrypted using AEAD (e.g. AES-GCM).
+  /// Queues a packet encrypted using AEAD (e.g. AES-GCM).
   ///
-  /// Constructs the packet length and padding, generates random padding bytes,
-  /// encrypts the payload with GCM, and writes the packet to the socket.
-  void _sendAeadPacket(Uint8List data, SSHCipherType cipherType) {
+  /// Constructs the packet length and padding on the calling isolate, then
+  /// hands the encryption to the background worker.
+  void _queueAeadPacket(
+    Uint8List data,
+    SSHCipherType cipherType,
+    int sequence,
+  ) {
     final paddingLength = _alignedPaddingLength(
       data.length,
       cipherType.blockSize,
@@ -610,20 +669,61 @@ class SSHTransport {
       // RFC 4253 §6 requires the padding to consist of random bytes.
       ..setRange(1 + data.length, packetLength, randomBytes(paddingLength));
 
-    final encrypted = _processAead(
-      key: _localCipherKey!,
-      iv: _localIV!,
-      sequence: _localAeadPacketCount++,
+    _enqueueAead(_OutboundAeadPacket.gcm(
+      key: Uint8List.fromList(_localCipherKey!),
+      iv: Uint8List.fromList(_localIV!),
+      sequence: sequence,
       aad: aad,
       input: plaintext,
-      forEncryption: true,
-    );
+    ));
+  }
 
-    final buffer = BytesBuilder(copy: false)
-      ..add(aad)
-      ..add(encrypted);
+  void _enqueueAead(_OutboundAeadPacket packet) {
+    if (isClosed) throw SSHStateError('Transport is closed');
+    _outboundAead.add(packet);
+    _outboundAeadDrain ??= _drainOutboundAead();
+  }
 
-    _writeSocket(buffer.takeBytes());
+  /// Encrypts queued packets one at a time and writes them in order.
+  ///
+  /// A single pump owns the queue: concurrent workers would finish packets out
+  /// of order, which the SSH sequence numbers would then reject.
+  Future<void> _drainOutboundAead() async {
+    try {
+      while (_outboundAead.isNotEmpty) {
+        final packet = _outboundAead.removeFirst();
+        final worker = await _aeadWorker();
+        final encrypted = packet.isChaCha
+            ? await worker.encryptChaCha(
+                key: packet.key,
+                sequence: packet.sequence,
+                input: packet.input,
+              )
+            : await worker.encryptGcm(
+                key: packet.key,
+                iv: packet.iv!,
+                sequence: packet.sequence,
+                aad: packet.aad!,
+                input: packet.input,
+              );
+        if (isClosed) return;
+        if (packet.isChaCha) {
+          _writeSocket(encrypted);
+        } else {
+          final aad = packet.aad!;
+          final output = Uint8List(aad.length + encrypted.length)
+            ..setAll(0, aad)
+            ..setAll(aad.length, encrypted);
+          _writeSocket(output);
+        }
+      }
+    } catch (error, stackTrace) {
+      if (!isClosed) {
+        closeWithError(SSHInternalError(error), stackTrace);
+      }
+    } finally {
+      _outboundAeadDrain = null;
+    }
   }
 
   /// Computes the correct padding length required to align the total packet size to [align] blocks.
@@ -706,6 +806,18 @@ class SSHTransport {
   Future<void> close() async {
     printDebug?.call('SSHTransport.close');
     if (isClosed) return;
+    // Let already-encrypted packets reach the socket before the worker goes
+    // away. The drain reports a worker failure through closeWithError.
+    final drain = _outboundAeadDrain;
+    if (drain != null) {
+      try {
+        await drain;
+      } catch (_) {
+        // A failed drain has already closed the transport.
+      }
+    }
+    if (isClosed) return;
+    _outboundAead.clear();
     _closeAeadDecryptor();
     _socketSubscription?.cancel();
     _socketSubscription = null;
@@ -727,6 +839,7 @@ class SSHTransport {
   void closeWithError(SSHError error, [StackTrace? stackTrace]) {
     printDebug?.call('SSHTransport.closeWithError $error');
     if (isClosed) return;
+    _outboundAead.clear();
     _closeAeadDecryptor();
     _socketSubscription?.cancel();
     _socketSubscription = null;
@@ -760,9 +873,17 @@ class SSHTransport {
   }
 
   /// Flush encoded bytes already queued for the socket.
-  Future<void> flush() {
+  ///
+  /// Waits for the background AEAD worker to encrypt every queued packet
+  /// first, so a caller that flushes after [sendPacket] sees those bytes on the
+  /// wire.
+  Future<void> flush() async {
+    final drain = _outboundAeadDrain;
+    if (drain != null) {
+      await drain;
+    }
     final pending = _pendingSocketWrite;
-    return _trackSocketWrite(
+    await _trackSocketWrite(
       pending == null
           ? Future<void>.sync(socket.flush)
           : pending.then((_) => socket.flush()),

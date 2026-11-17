@@ -68,6 +68,7 @@ void main() {
       setSequenceValue(sender, '_localPacketSN', 7);
 
       sender.sendPacket(payload);
+      await sender.flush();
       final encryptedPacket = senderSocket.packets.last;
 
       final receiverSocket = _CaptureSSHSocket();
@@ -124,7 +125,7 @@ void main() {
       receiver.close();
     });
 
-    test('keeps active ChaCha keys until NEWKEYS takes effect', () {
+    test('keeps active ChaCha keys until NEWKEYS takes effect', () async {
       final key = Uint8List.fromList(List<int>.generate(64, (i) => i));
       final cipher = OpenSSHChaCha20Poly1305(key);
       final socket = _CaptureSSHSocket();
@@ -148,6 +149,7 @@ void main() {
 
       final payload = Uint8List.fromList([SSH_Message_NewKeys.messageId]);
       transport.sendPacket(payload);
+      await transport.flush();
 
       final encrypted = socket.packets.last;
       final packet = cipher.decryptPacket(encrypted, 9);
@@ -389,6 +391,7 @@ void main() {
             List.generate(payloadLength, (index) => index % 256),
           );
           sender.sendPacket(payload);
+          await sender.flush();
 
           final encryptedPacket = senderSocket.packets.last;
 
@@ -458,6 +461,7 @@ void main() {
         setSequenceValue(sender, '_localPacketSN', 0);
 
         sender.sendPacket(Uint8List.fromList([251, 9, 8, 7]));
+        await sender.flush();
         final tampered = Uint8List.fromList(senderSocket.packets.last);
         tampered[tampered.length - 1] ^= 0x01;
 

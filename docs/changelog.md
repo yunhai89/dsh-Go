@@ -2,6 +2,18 @@
 
 每个版本先中文、后英文。发版时把对应版本的正文（不含版本标题）作为 Release 正文，见 `docs/release.md`。
 
+## 1.2.2 · 2026-11-18
+
+### 中文
+
+- **修复 SSH 上传大文件时 UI 线程卡顿。** SSH 出站 AEAD 加密（AES-GCM / ChaCha20-Poly1305）原本在 UI isolate 上同步执行，上传 80 MB 文件时约 2500 个 32 KB 包都在主线程加密，界面被连续钉住数秒，传完才恢复。现在每个 SSH 传输有一个后台 crypto isolate 负责出站加密，transport 只做分帧和 padding，单泵按序加密后写 socket；`flush()` / `close()` 会等队列清空，包顺序与 rekey 语义不变。
+- **验证。** OnePlus 7 / Android 12 上上传 80 MB 文件：修复前 gfxinfo 9/9 帧 Janky、99th 1150 ms、Choreographer 单次最多跳过 114 帧、Davey 1161 ms；修复后 gfxinfo 0/6 Janky、99th 9 ms、本应用无 Choreographer / Davey 告警，上传期间主线程 6%–25%，`screencap` 从 3.4–6.0 s 降到 0.46–0.62 s；80 MB 零填充文件 14 s 传完（修复前 16 s），吞吐没有回退。dartssh2 测试 735 个全部通过。
+
+### English
+
+- **Fix UI-thread stalls while uploading files over SSH.** Outbound AEAD encryption (AES-GCM / ChaCha20-Poly1305) used to run synchronously on the UI isolate: an 80 MB upload is about 2500 32 KB packets, all encrypted on the main thread, freezing the interface for seconds until the transfer finished. Each SSH transport now encrypts outgoing packets on a dedicated crypto isolate; the transport only frames packets and adds padding, then a single pump writes the encrypted packets in order. `flush()` / `close()` wait for the queue to drain, and packet order and rekey semantics are unchanged.
+- **Verification.** 80 MB upload on a OnePlus 7 / Android 12: before the fix gfxinfo reported 9/9 janky frames, a 99th percentile of 1150 ms, Choreographer skips of up to 114 frames and a 1161 ms Davey; after the fix it is 0/6 janky frames, a 9 ms 99th percentile, no Choreographer / Davey warnings for the app, 6%–25% main-thread usage during the upload, and `screencap` dropped from 3.4–6.0 s to 0.46–0.62 s. An 80 MB zero-filled file uploads in 14 s (16 s before), so throughput did not regress. All 735 dartssh2 tests pass.
+
 ## 1.2.1 · 2026-11-16
 
 ### 中文

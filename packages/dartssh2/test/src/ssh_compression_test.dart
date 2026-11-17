@@ -19,15 +19,16 @@ void _set(SSHTransport transport, String field, Object? value) =>
     reflect(transport).setField(_private(field), value);
 T _get<T>(SSHTransport transport, String field) =>
     reflect(transport).getField(_private(field)).reflectee as T;
-dynamic _call(SSHTransport transport, String method, [List<Object?> args = const []]) =>
+dynamic _call(SSHTransport transport, String method,
+        [List<Object?> args = const []]) =>
     reflect(transport).invoke(_private(method), args).reflectee;
 
 Uint8List _bytes(List<int> bytes) => Uint8List.fromList(bytes);
 Uint8List _payload(Uint8List packet) => Uint8List.sublistView(
-      packet, 5, packet.length - SSHPacket.readPaddingLength(packet));
+    packet, 5, packet.length - SSHPacket.readPaddingLength(packet));
 
-void _ready(SSHTransport transport, {SSHCipherType? cipher,
-    SSHMacType mac = SSHMacType.hmacSha256Etm}) {
+void _ready(SSHTransport transport,
+    {SSHCipherType? cipher, SSHMacType mac = SSHMacType.hmacSha256Etm}) {
   _get<dynamic>(transport, '_localPacketSN').reset();
   _get<dynamic>(transport, '_remotePacketSN').reset();
   _set(transport, '_remoteVersion', 'SSH-2.0-test');
@@ -95,26 +96,36 @@ void main() {
     expect(_get<Object?>(transport, '_remoteCompression'), isNull);
   });
 
-  test('disabled compression selects none and rejects zlib-only peer', () async {
+  test('disabled compression selects none and rejects zlib-only peer',
+      () async {
     final transport = SSHTransport(_Socket());
     addTearDown(transport.close);
-    expect(_call(transport, '_selectCompression', [
-      ['zlib@openssh.com', 'none'],
-    ]), 'none');
-    expect(() => _call(transport, '_selectCompression', [
-      ['zlib'],
-    ]), throwsA(isA<SSHHandshakeError>()));
-    expect(() => _call(transport, '_selectCompression', [
-      ['zlib@openssh.com'],
-    ]), throwsA(isA<SSHHandshakeError>()));
+    expect(
+        _call(transport, '_selectCompression', [
+          ['zlib@openssh.com', 'none'],
+        ]),
+        'none');
+    expect(
+        () => _call(transport, '_selectCompression', [
+              ['zlib'],
+            ]),
+        throwsA(isA<SSHHandshakeError>()));
+    expect(
+        () => _call(transport, '_selectCompression', [
+              ['zlib@openssh.com'],
+            ]),
+        throwsA(isA<SSHHandshakeError>()));
   });
 
   test('server honors client preference, not server ordering', () async {
-    final transport = SSHTransport(_Socket(), isServer: true, compression: true);
+    final transport =
+        SSHTransport(_Socket(), isServer: true, compression: true);
     addTearDown(transport.close);
-    expect(_call(transport, '_selectCompression', [
-      ['none', 'zlib@openssh.com'],
-    ]), 'none');
+    expect(
+        _call(transport, '_selectCompression', [
+          ['none', 'zlib@openssh.com'],
+        ]),
+        'none');
   });
 
   group('continuous zlib stream', () {
@@ -123,7 +134,8 @@ void main() {
       final decoder = SSHZlib(compress: false);
       addTearDown(encoder.close);
       addTearDown(decoder.close);
-      final payload = _bytes(List.generate(32768, (i) => (i * 13 + i ~/ 251) & 255));
+      final payload =
+          _bytes(List.generate(32768, (i) => (i * 13 + i ~/ 251) & 255));
       final first = encoder.process(payload);
       final second = encoder.process(payload);
       expect(decoder.process(first), payload);
@@ -136,7 +148,8 @@ void main() {
       expect(() => fresh.process(second), throwsA(isA<SSHPacketError>()));
     });
 
-    test('accepts channel payload plus message header at the upper boundary', () {
+    test('accepts channel payload plus message header at the upper boundary',
+        () {
       final encoder = SSHZlib(compress: true);
       final decoder = SSHZlib(compress: false);
       addTearDown(encoder.close);
@@ -147,7 +160,8 @@ void main() {
       }
     });
 
-    test('bounds accumulated output across native chunks, not compressed size', () {
+    test('bounds accumulated output across native chunks, not compressed size',
+        () {
       final encoder = SSHZlib(compress: true);
       final decoder = SSHZlib(compress: false);
       addTearDown(encoder.close);
@@ -189,13 +203,17 @@ void main() {
     (SSHCipherType.aes128ctr, SSHMacType.hmacSha256Etm),
     (SSHCipherType.aes128ctr, SSHMacType.hmacSha256),
   ]) {
-    test('auth success and compressed packets in one chunk: ${mode.$1.name}/${mode.$2.name}', () async {
+    test(
+        'auth success and compressed packets in one chunk: ${mode.$1.name}/${mode.$2.name}',
+        () async {
       final senderSocket = _Socket();
       final receiverSocket = _Socket();
-      final sender = SSHTransport(senderSocket, isServer: true, compression: true);
+      final sender =
+          SSHTransport(senderSocket, isServer: true, compression: true);
       final received = <Uint8List>[];
       late SSHTransport receiver;
-      receiver = SSHTransport(receiverSocket, compression: true, onMessage: (data) {
+      receiver =
+          SSHTransport(receiverSocket, compression: true, onMessage: (data) {
         received.add(data);
         if (data.first == SSH_Message_Userauth_Success.messageId) {
           // Compression must already be active before application callbacks.
@@ -211,6 +229,7 @@ void main() {
       receiverSocket.packets.clear();
       final before = _bytes([80, 1, 2, 3]);
       sender.sendPacket(before);
+      await sender.flush();
       await _receive(receiver, senderSocket.packets.removeLast());
       expect(received.removeLast(), before);
       expect(_get<Object?>(receiver, '_remoteCompression'), isNull);
@@ -220,6 +239,7 @@ void main() {
       sender.sendPacket(auth);
       sender.sendPacket(first);
       sender.sendPacket(second);
+      await sender.flush();
       final wire = senderSocket.packets.expand((packet) => packet).toList();
       await _receive(receiver, wire.sublist(0, 3));
       expect(received, isEmpty);
@@ -230,6 +250,7 @@ void main() {
       final reverse = <Uint8List>[];
       // _consumePacket checks the actual cipher/MAC, then decompress below.
       final dynamic buffer = _get<dynamic>(sender, '_buffer');
+      await receiver.flush();
       buffer.add(receiverSocket.packets.single);
       final packet = _call(sender, '_consumePacket') as Uint8List;
       reverse.add(_get<SSHZlib>(sender, '_remoteCompression').process(packet));
@@ -248,29 +269,39 @@ void main() {
     final peerDecoder = SSHZlib(compress: false);
     addTearDown(peerDecoder.close);
     transport.sendPacket(_bytes([80, 3]));
+    await transport.flush();
     // Decode ciphertext independently of the receive state under test.
     final peer = SSHTransport(_Socket(), isServer: true, compression: true);
     addTearDown(peer.close);
     _ready(peer, cipher: SSHCipherType.aes128gcm);
     final dynamic peerBuffer = _get<dynamic>(peer, '_buffer');
     peerBuffer.add(socket.packets.last);
-    expect(peerDecoder.process(_call(peer, '_consumePacket') as Uint8List), [80, 3]);
+    expect(peerDecoder.process(_call(peer, '_consumePacket') as Uint8List),
+        [80, 3]);
     // Advance only the peer cipher sequence before consuming the next packet.
     final dynamic sequence = _get<dynamic>(peer, '_remotePacketSN');
     sequence.increase();
     _call(transport, '_sendNewKeys');
+    await transport.flush();
     peerBuffer.add(socket.packets.last);
     expect(peerDecoder.process(_call(peer, '_consumePacket') as Uint8List),
         [SSH_Message_NewKeys.messageId]);
-    expect(_get<SSHZlib>(transport, '_localCompression'), isNot(same(oldLocal)));
+    expect(
+        _get<SSHZlib>(transport, '_localCompression'), isNot(same(oldLocal)));
     expect(_get<SSHZlib>(transport, '_remoteCompression'), same(oldRemote));
-    await _call(transport, '_handleMessageNewKeys', [_bytes([21])]);
-    expect(_get<SSHZlib>(transport, '_remoteCompression'), isNot(same(oldRemote)));
+    await _call(transport, '_handleMessageNewKeys', [
+      _bytes([21])
+    ]);
+    expect(
+        _get<SSHZlib>(transport, '_remoteCompression'), isNot(same(oldRemote)));
     // New stream has a fresh RFC 1950 header, not the previous dictionary.
     final fresh = SSHZlib(compress: false);
     addTearDown(fresh.close);
     final payload = _bytes([80, 4]);
-    expect(fresh.process(_get<SSHZlib>(transport, '_localCompression').process(payload)), payload);
+    expect(
+        fresh.process(
+            _get<SSHZlib>(transport, '_localCompression').process(payload)),
+        payload);
     // Rekey to none stops only after NEWKEYS, not at algorithm negotiation.
     _set(transport, '_clientCompression', 'none');
     _set(transport, '_serverCompression', 'none');
@@ -278,11 +309,14 @@ void main() {
     _call(transport, '_sendNewKeys');
     expect(_get<Object?>(transport, '_localCompression'), isNull);
     expect(_get<Object?>(transport, '_remoteCompression'), isNotNull);
-    await _call(transport, '_handleMessageNewKeys', [_bytes([21])]);
+    await _call(transport, '_handleMessageNewKeys', [
+      _bytes([21])
+    ]);
     expect(_get<Object?>(transport, '_remoteCompression'), isNull);
   });
 
-  test('oversized decompression closes transport and releases contexts', () async {
+  test('oversized decompression closes transport and releases contexts',
+      () async {
     final socket = _Socket();
     final transport = SSHTransport(socket, compression: true);
     _ready(transport);
@@ -291,7 +325,8 @@ void main() {
     addTearDown(encoder.close);
     final failed = expectLater(transport.done, throwsA(isA<SSHPacketError>()));
     socket._input.add(SSHPacket.pack(
-      encoder.process(Uint8List(SSHPacket.maxLength + 1)), align: 8));
+        encoder.process(Uint8List(SSHPacket.maxLength + 1)),
+        align: 8));
     await failed;
     expect(transport.isClosed, isTrue);
     expect(_get<Object?>(transport, '_localCompression'), isNull);
@@ -323,11 +358,13 @@ class _Socket implements SSHSocket {
     if (!_done.isCompleted) _done.complete();
     await _input.close();
   }
+
   @override
   void destroy() {
     if (!_done.isCompleted) _done.complete();
     unawaited(_input.close());
   }
+
   @override
   Future<void> flush() async {}
 }
@@ -339,8 +376,11 @@ class _Sink implements StreamSink<List<int>> {
   void add(List<int> data) => packets.add(_bytes(data));
   @override
   Future<void> addStream(Stream<List<int>> stream) async {
-    await for (final data in stream) { add(data); }
+    await for (final data in stream) {
+      add(data);
+    }
   }
+
   @override
   void addError(Object error, [StackTrace? stackTrace]) {}
   @override

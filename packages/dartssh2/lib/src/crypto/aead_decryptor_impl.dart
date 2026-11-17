@@ -8,6 +8,30 @@ import '../utils/openssh_chacha20_poly1305.dart';
 /// Wire kinds for the background AEAD worker.
 const aeadKindGcm = 0;
 const aeadKindChaCha = 1;
+const aeadKindGcmEncrypt = 2;
+const aeadKindChaChaEncrypt = 3;
+
+/// Encrypts one AEAD packet. Runs inside the crypto isolate (or inline on
+/// platforms without isolates).
+Uint8List encryptAead({
+  required int kind,
+  required Uint8List key,
+  Uint8List? iv,
+  required int sequence,
+  Uint8List? aad,
+  required Uint8List input,
+}) {
+  if (kind == aeadKindGcmEncrypt) {
+    final nonce = _nonceForSequence(iv!, sequence);
+    final cipher = GCMBlockCipher(AESEngine())
+      ..init(true, AEADParameters(KeyParameter(key), 128, nonce, aad!));
+    return cipher.process(input);
+  }
+  if (kind == aeadKindChaChaEncrypt) {
+    return OpenSSHChaCha20Poly1305(key).encryptPacket(input, sequence);
+  }
+  throw ArgumentError.value(kind, 'kind', 'unknown AEAD encryption kind');
+}
 
 /// Decrypts one AEAD packet. Runs inside the crypto isolate (or inline on
 /// platforms without isolates).

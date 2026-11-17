@@ -33,6 +33,14 @@ class OpenSSHChaCha20Poly1305 {
   late final Uint8List _payloadKey;
   late final Uint8List _lengthKey;
 
+  /// The original 64-byte key, in OpenSSH order (payload key then length key).
+  ///
+  /// Used to hand the key to the background packet worker; keep the returned
+  /// copy private to that worker.
+  Uint8List get keyMaterial => Uint8List(keySize)
+    ..setAll(0, _payloadKey)
+    ..setAll(32, _lengthKey);
+
   /// Encrypts `packet_length || padding_length || payload || padding`.
   Uint8List encryptPacket(Uint8List packet, int sequenceNumber) {
     if (packet.length < encryptedLengthSize) {

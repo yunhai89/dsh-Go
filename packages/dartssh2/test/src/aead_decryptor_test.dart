@@ -62,6 +62,40 @@ void main() {
     expect(decoded, orderedEquals(packet));
   });
 
+  test('background GCM encrypts a packet that decrypts', () async {
+    final key = _bytes(32, 11);
+    final iv = _bytes(12, 12);
+    final aad = _bytes(4, 13);
+    final plaintext = _bytes(2048, 14);
+
+    final worker = await spawnAeadDecryptor();
+    addTearDown(worker.close);
+    final encrypted = await worker.encryptGcm(
+        key: key, iv: iv, sequence: 7, aad: aad, input: plaintext);
+    expect(
+      encrypted,
+      orderedEquals(_gcmEncrypt(
+          key: key, iv: iv, sequence: 7, aad: aad, plaintext: plaintext)),
+    );
+    final decoded = await worker.decryptGcm(
+        key: key, iv: iv, sequence: 7, aad: aad, input: encrypted);
+    expect(decoded, orderedEquals(plaintext));
+  });
+
+  test('background ChaCha20-Poly1305 encrypts a packet', () async {
+    final key = _bytes(64, 15);
+    final sequence = 5;
+    final packet = _bytes(64, 16);
+
+    final worker = await spawnAeadDecryptor();
+    addTearDown(worker.close);
+    final encrypted =
+        await worker.encryptChaCha(key: key, sequence: sequence, input: packet);
+    final decoded =
+        OpenSSHChaCha20Poly1305(key).decryptPacket(encrypted, sequence);
+    expect(decoded, orderedEquals(packet));
+  });
+
   test('closing the worker settles outstanding requests', () async {
     final worker = await spawnAeadDecryptor();
     await worker.close();

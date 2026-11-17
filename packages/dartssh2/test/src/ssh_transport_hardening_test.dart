@@ -141,7 +141,7 @@ void main() {
 
     test(
         'AEAD send path uses padding that is not all zero and differs '
-        'between packets with identical payloads', () {
+        'between packets with identical payloads', () async {
       for (final cipherType in [
         SSHCipherType.aes128gcm,
         SSHCipherType.aes256gcm,
@@ -153,7 +153,7 @@ void main() {
           List<int>.generate(cipherType.ivSize, (i) => i + 5),
         );
 
-        Uint8List paddingOf(Uint8List payload) {
+        Future<Uint8List> paddingOf(Uint8List payload) async {
           final socket = _CaptureSSHSocket();
           final transport = SSHTransport(socket);
           setPrivate(transport, '_clientCipherType', cipherType);
@@ -164,8 +164,9 @@ void main() {
           setSequenceValue(transport, '_localPacketSN', 0);
 
           transport.sendPacket(payload);
+          await transport.flush();
           final packet = socket.packets.last;
-          transport.close();
+          await transport.close();
 
           final aad = Uint8List.sublistView(packet, 0, 4);
           final rest = Uint8List.sublistView(packet, 4);
