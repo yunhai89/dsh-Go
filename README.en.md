@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  An Android client for DeepSeek Harness. Run DSH right on your phone, or drive the one on your computer.
+  A mobile client for DeepSeek Harness. Android is released; iOS is in development and device testing, and currently needs a Mac build signed with your own team (<a href="app/ios/README.md">iOS project</a> · <a href="docs/architecture.md">architecture</a>).
 </p>
 
 > **Fork notice:** This repository is a fork of [ccch1mneyyy/dsh-go](https://github.com/ccch1mneyyy/dsh-go), maintained and modified by [yunhai89](https://github.com/yunhai89). It is **not an official release**. The original code is licensed under [AGPL-3.0](LICENSE); the DSH Go name and logo, Deepy and Whale girl are copyright ccch1mneyyy, and the whale-tail artwork includes DeepSeek's official mark and derivative art, each owned by its respective rights holder. None of these assets **are covered by AGPL-3.0** — see [ASSETS.md](ASSETS.md). This fork keeps the original author's credit, license and modification notices and claims no rights to those brand assets. A modified build published under this fork must use its own name and artwork as required by ASSETS.md.
@@ -295,15 +295,15 @@ DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh --dry-run -f all
 
 | Path | Contents |
 | --- | --- |
-| `app/` | Flutter interface and Android Kotlin platform code |
+| `app/` | Flutter interface, Android Kotlin code, and iOS Swift/WidgetKit code under development |
 | `packages/dsh_client/` | Dart client for the DSH Web API |
 | `packages/dsh_remote/` | Dart client for DSH Remote |
-| `runtime/` | Linux runtime assembly, engine patches and the app bridge |
+| `runtime/` | Android Linux runtime assembly, iOS runtime specialization, engine patches and the app bridge |
 | `sdk/plugin-kit/` | Native plugin authoring kit, used from the repository and not published to npm |
 | `examples/plugins/` | Example plugins |
 | `docs/guide/`, `docs/plugins/`, `docs/pets/`, `docs/live2d/` | User guides, plugin development, pet packs and Live2D companion authoring |
 | `docs/assets/` | Showcase images, pet animations and community QR codes used on this page |
-| `tooling/` | Toolchain, APK build and diagnostic scripts |
+| `tooling/` | Toolchain, Android APK/iOS development build, and diagnostic scripts |
 | `services/`, `site/`, `infra/` | Companion sharing service, website and deployment materials |
 
 ## Contribute

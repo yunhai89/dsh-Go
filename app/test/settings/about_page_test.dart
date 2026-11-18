@@ -144,7 +144,7 @@ void main() {
   testWidgets('the separate project star still opens the repository', (tester) async {
     await pump(tester);
     await tap(tester, 'settings-star');
-    expect(opened.map((uri) => uri.toString()), ['https://github.com/ccch1mneyyy/dsh-go']);
+    expect(opened.map((uri) => uri.toString()), ['https://github.com/yunhai89/dsh-Go']);
     expect(store.writes.last.finished, isTrue);
   });
 

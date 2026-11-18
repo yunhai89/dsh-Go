@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  DeepSeek Harness 的 Android 客户端。手机上直接跑，也能遥控你电脑上的 DSH。
+  DeepSeek Harness 的手机应用：Android 版已发布；iOS 版仍在开发和真机测试，需在 Mac 上自行签名编译（<a href="app/ios/README.md">iOS 工程</a> · <a href="docs/architecture.md">架构</a>）。
 </p>
 
 > **Fork 说明**：本仓库是 [ccch1mneyyy/dsh-go](https://github.com/ccch1mneyyy/dsh-go) 的 fork，由 [yunhai89](https://github.com/yunhai89) 维护并包含修改，**不是官方版本**。原始代码以 [AGPL-3.0](LICENSE) 发布；DSH Go 名称与标识、Deepy 小鲸鱼和鲸娘的版权归原作者 ccch1mneyyy，鲸鱼尾巴图形包含 DeepSeek 官方图标及二创、权利归各自所有者，这些素材**都不在 AGPL 授权范围内**，详见 [ASSETS.md](ASSETS.md)。本 fork 保留原作者署名、许可证和修改说明，不主张上述品牌素材的权利；以修改版身份再发布时，须按 ASSETS.md 换成自己的名称和素材。
@@ -295,15 +295,15 @@ DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh --dry-run -f all
 
 | 路径 | 内容 |
 | --- | --- |
-| `app/` | Flutter 界面与 Android Kotlin 平台实现 |
+| `app/` | Flutter 界面、Android Kotlin 实现与开发中的 iOS Swift/WidgetKit 实现 |
 | `packages/dsh_client/` | DSH Web API 的 Dart 客户端 |
 | `packages/dsh_remote/` | DSH Remote 的 Dart 客户端 |
-| `runtime/` | Linux 运行时打包、引擎补丁与 App 桥接 |
+| `runtime/` | Android Linux 运行时、iOS 运行时特化、引擎补丁与 App 桥接 |
 | `sdk/plugin-kit/` | 原生插件作者工具包；在仓库中使用，未发布到 npm |
 | `examples/plugins/` | 插件示例 |
 | `docs/guide/`、`docs/plugins/`、`docs/pets/`、`docs/live2d/` | 用户指南、插件开发、宠物包与 Live2D 伙伴制作 |
 | `docs/assets/` | 本页用到的展示图、桌宠动图和社群二维码 |
-| `tooling/` | 工具链、APK 构建与诊断脚本 |
+| `tooling/` | 工具链、Android APK/iOS 开发构建与诊断脚本 |
 | `services/`、`site/`、`infra/` | 配套分享服务、网站和部署材料 |
 
 ## 参与贡献
