@@ -16,15 +16,10 @@
 > **Fork notice:** This repository is a fork of [ccch1mneyyy/dsh-go](https://github.com/ccch1mneyyy/dsh-go), maintained and modified by [yunhai89](https://github.com/yunhai89). It is **not an official release**. The original code is licensed under [AGPL-3.0](LICENSE); the DSH Go name and logo, Deepy and Whale girl are copyright ccch1mneyyy, and the whale-tail artwork includes DeepSeek's official mark and derivative art, each owned by its respective rights holder. None of these assets **are covered by AGPL-3.0** — see [ASSETS.md](ASSETS.md). This fork keeps the original author's credit, license and modification notices and claims no rights to those brand assets. A modified build published under this fork must use its own name and artwork as required by ASSETS.md.
 
 <p align="center">
-  <a href="https://github.com/ccch1mneyyy/dsh-go/releases/latest"><img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-4B67B4?style=flat-square&logo=android&logoColor=white&labelColor=2B3245"></a>
+  <a href="https://github.com/yunhai89/dsh-Go/releases/latest"><img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-4B67B4?style=flat-square&logo=android&logoColor=white&labelColor=2B3245"></a>
   <a href="LICENSE"><img alt="License AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-4B67B4?style=flat-square&labelColor=2B3245"></a>
   <a href="https://forum.dshtui.com"><img alt="Forum" src="https://img.shields.io/badge/forum-forum.dshtui.com-4B67B4?style=flat-square&labelColor=2B3245"></a>
   <a href="https://qm.qq.com/q/OEy2RqZnqY"><img alt="QQ group 1132118290" src="https://img.shields.io/badge/QQ%20group-1132118290-4B67B4?style=flat-square&logo=tencentqq&logoColor=white&labelColor=2B3245"></a>
-</p>
-
-<p align="center">
-  <a href="https://trendshift.io/repositories/319451"><img src="https://trendshift.io/api/badge/trendshift/repositories/319451/daily" alt="DSH Go: #1 on Trendshift's all-language daily ranking (2026-10-30)" width="250" height="55"></a><br>
-  <sub>#1 on Trendshift's all-language daily ranking · 2026-10-30</sub>
 </p>
 
 <br>
@@ -46,23 +41,27 @@
 <a id="download"></a>
 <h3 align="center">Download DSH Go</h3>
 
-<p align="center">Get the latest APK from GitHub Releases or the download page at go.dshtui.com. Most phones need the arm64 package.</p>
+<p align="center">Get the latest APK from this project's GitHub Releases; the official build is published by the original author (second button). Most phones need the arm64 package.</p>
 
 <p align="center">
-  <a href="https://github.com/ccch1mneyyy/dsh-go/releases/latest"><img alt="Download from GitHub Releases" src="https://img.shields.io/badge/GitHub%20Releases-Download%20APK-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://go.dshtui.com/download"><img alt="Download from go.dshtui.com" src="https://img.shields.io/badge/go.dshtui.com-Download%20page-4B67B4?style=for-the-badge&labelColor=2B3245"></a>
+  <a href="https://github.com/yunhai89/dsh-Go/releases/latest"><img alt="Download from this project's GitHub Releases" src="https://img.shields.io/static/v1?label=This%20project&message=Download%20APK&color=4B67B4&logo=github&logoColor=white&style=for-the-badge&labelColor=2B3245"></a>&emsp;<a href="https://github.com/ccch1mneyyy/dsh-go/releases/latest"><img alt="Official release (published by ccch1mneyyy)" src="https://img.shields.io/static/v1?label=Official&message=Upstream%20release&color=6B7280&logo=github&logoColor=white&style=for-the-badge&labelColor=2B3245"></a>
 </p>
 
 <p align="center">
-  <b>Thank you all for supporting and loving DSH Go! iOS and HarmonyOS versions are coming as soon as I can make them. The more stars, the faster they come, hehe</b>
+  <sub>Official download page: <a href="https://go.dshtui.com/download">go.dshtui.com/download</a>. This project is a fork of <a href="https://github.com/ccch1mneyyy/dsh-go">ccch1mneyyy/dsh-go</a>; its APKs are published by yunhai89 and update independently of the official ones.</sub><br>
+  <sub>APKs from this project use their own signing key and can't be installed over official or early test builds (or vice versa): uninstall the old one first, which clears your chats, the Linux environment and settings. Once you run a build from this project, later versions update in place.</sub>
 </p>
 
 <p align="center">
-  <a href="https://github.com/ccch1mneyyy/dsh-go/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/ccch1mneyyy/dsh-go?style=flat-square&logo=github&label=Star&color=4B67B4&labelColor=2B3245"></a>
+  <b>Thanks for supporting DSH Go. This fork focuses on Android fixes and improvements; see the <a href="https://github.com/ccch1mneyyy/dsh-go">official project</a> for iOS and HarmonyOS.</b>
 </p>
 
 <p align="center">
-  <sub>New here? Start with the <a href="docs/guide/README.md">user guide</a>, and bring questions to the <a href="#community">forum and QQ group</a>.</sub><br>
-  <sub>An early test build signed with a different key can't be updated in place: uninstall it first, which clears your chats, the Linux environment and settings.</sub>
+  <a href="https://github.com/yunhai89/dsh-Go/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/yunhai89/dsh-Go?style=flat-square&logo=github&label=Star&color=4B67B4&labelColor=2B3245"></a>
+</p>
+
+<p align="center">
+  <sub>New here? Start with the <a href="docs/guide/README.md">user guide</a>, and bring questions to the <a href="#community">forum and QQ group</a>.</sub>
 </p>
 
 <br>
@@ -188,7 +187,7 @@ Capabilities depend on the host and connection. DSHarness Remote currently accep
 
 Installation requires Android 8.0 (API 26) or later. The **arm64** package on the Releases page is for typical 64-bit Android phones; the x64 package for x86_64 devices and emulators is under “Other builds” at the end of the release notes. This repository has no 32-bit ARM build.
 
-1. Download the APK for your device architecture from [GitHub Releases](https://github.com/ccch1mneyyy/dsh-go/releases/latest) or the [download page](https://go.dshtui.com/download), and follow Android's prompt to allow that installation source.
+1. Download the APK for your device architecture from [this project's GitHub Releases](https://github.com/yunhai89/dsh-Go/releases/latest), and follow Android's prompt to allow that installation source. For the official build, use the [official Releases](https://github.com/ccch1mneyyy/dsh-go/releases/latest) or the [download page](https://go.dshtui.com/download); the two are signed with different keys and can't overwrite each other.
 2. On first launch, choose an on-device runtime or a remote host.
 3. Configure a model and its credentials for the selected host, then start a conversation. Some remote providers must be configured on the host itself.
 
@@ -258,11 +257,11 @@ Yes. The code is in this repository under [AGPL-3.0](LICENSE); `sdk/` and `examp
 
 The following workflow targets **Linux x86_64**. The toolchain script currently defaults to JDK 17, Flutter 3.47.7 and the Android SDK/NDK. The app requires Dart `^3.13.5`. Prepare Bash, Git, curl, tar, unzip, xz, Python 3, zstd (for unpacking zstd-compressed deb archives when Python does not provide `compression.zstd`), file and standard GNU utilities. Resolving Ubuntu package locks again also requires gpgv.
 
-Start with the complete source tree and project assets. Fonts, images and other files declared in `app/pubspec.yaml` are build inputs. The following script generates the runtime bundle.
+Start with the complete source tree and project assets for this fork (upstream official source: <https://github.com/ccch1mneyyy/dsh-go>). Fonts, images and other files declared in `app/pubspec.yaml` are build inputs. The following script generates the runtime bundle.
 
 ```bash
-git clone https://github.com/ccch1mneyyy/dsh-go.git
-cd dsh-go
+git clone https://github.com/yunhai89/dsh-Go.git
+cd dsh-Go
 
 bash tooling/setup-toolchain.sh
 source tooling/env.sh
@@ -309,7 +308,7 @@ DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh --dry-run -f all
 
 ## Contribute
 
-Report bugs and suggest improvements in [Issues](https://github.com/ccch1mneyyy/dsh-go/issues). For code, documentation and translation changes, start with [CONTRIBUTING.en.md](CONTRIBUTING.en.md). Plugin authors can use the [plugin guides](docs/plugins/en/README.md) and [SDK](sdk/plugin-kit/README.en.md).
+Report bugs and suggest improvements in [this project's Issues](https://github.com/yunhai89/dsh-Go/issues); issues with the official build itself go to the [upstream tracker](https://github.com/ccch1mneyyy/dsh-go/issues). For code, documentation and translation changes, start with [CONTRIBUTING.en.md](CONTRIBUTING.en.md). Plugin authors can use the [plugin guides](docs/plugins/en/README.md) and [SDK](sdk/plugin-kit/README.en.md).
 
 Report security issues through [SECURITY.en.md](SECURITY.en.md). Keep vulnerability details and credentials out of public issues.
 

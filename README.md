@@ -16,15 +16,10 @@
 > **Fork 说明**：本仓库是 [ccch1mneyyy/dsh-go](https://github.com/ccch1mneyyy/dsh-go) 的 fork，由 [yunhai89](https://github.com/yunhai89) 维护并包含修改，**不是官方版本**。原始代码以 [AGPL-3.0](LICENSE) 发布；DSH Go 名称与标识、Deepy 小鲸鱼和鲸娘的版权归原作者 ccch1mneyyy，鲸鱼尾巴图形包含 DeepSeek 官方图标及二创、权利归各自所有者，这些素材**都不在 AGPL 授权范围内**，详见 [ASSETS.md](ASSETS.md)。本 fork 保留原作者署名、许可证和修改说明，不主张上述品牌素材的权利；以修改版身份再发布时，须按 ASSETS.md 换成自己的名称和素材。
 
 <p align="center">
-  <a href="https://github.com/ccch1mneyyy/dsh-go/releases/latest"><img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-4B67B4?style=flat-square&logo=android&logoColor=white&labelColor=2B3245"></a>
+  <a href="https://github.com/yunhai89/dsh-Go/releases/latest"><img alt="Android 8+" src="https://img.shields.io/badge/Android-8%2B-4B67B4?style=flat-square&logo=android&logoColor=white&labelColor=2B3245"></a>
   <a href="LICENSE"><img alt="许可证 AGPL-3.0" src="https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-AGPL--3.0-4B67B4?style=flat-square&labelColor=2B3245"></a>
   <a href="https://forum.dshtui.com"><img alt="论坛" src="https://img.shields.io/badge/%E8%AE%BA%E5%9D%9B-forum.dshtui.com-4B67B4?style=flat-square&labelColor=2B3245"></a>
   <a href="https://qm.qq.com/q/OEy2RqZnqY"><img alt="QQ 群 1132118290" src="https://img.shields.io/badge/QQ%20%E7%BE%A4-1132118290-4B67B4?style=flat-square&logo=tencentqq&logoColor=white&labelColor=2B3245"></a>
-</p>
-
-<p align="center">
-  <a href="https://trendshift.io/repositories/319451"><img src="https://trendshift.io/api/badge/trendshift/repositories/319451/daily" alt="DSH Go：Trendshift 全语言日榜第一（2026-10-30）" width="250" height="55"></a><br>
-  <sub>Trendshift 全语言日榜 #1 · 2026-10-30</sub>
 </p>
 
 <br>
@@ -46,23 +41,27 @@
 <a id="download"></a>
 <h3 align="center">下载 DSH Go</h3>
 
-<p align="center">从 GitHub Releases 或官网下载页获取最新版 APK，常见手机选 arm64 包。</p>
+<p align="center">从本项目的 GitHub Releases 获取最新版 APK，常见手机选 arm64 包；官方版本由原作者发布，见第二个按钮。</p>
 
 <p align="center">
-  <a href="https://github.com/ccch1mneyyy/dsh-go/releases/latest"><img alt="从 GitHub Releases 下载" src="https://img.shields.io/badge/GitHub%20Releases-%E4%B8%8B%E8%BD%BD%20APK-4B67B4?style=for-the-badge&logo=github&logoColor=white&labelColor=2B3245"></a>&emsp;<a href="https://go.dshtui.com/download"><img alt="从官网下载页下载" src="https://img.shields.io/badge/go.dshtui.com-%E5%AE%98%E7%BD%91%E4%B8%8B%E8%BD%BD-4B67B4?style=for-the-badge&labelColor=2B3245"></a>
+  <a href="https://github.com/yunhai89/dsh-Go/releases/latest"><img alt="从本项目的 GitHub Releases 下载" src="https://img.shields.io/static/v1?label=%E6%9C%AC%E9%A1%B9%E7%9B%AE&message=%E4%B8%8B%E8%BD%BD%20APK&color=4B67B4&logo=github&logoColor=white&style=for-the-badge&labelColor=2B3245"></a>&emsp;<a href="https://github.com/ccch1mneyyy/dsh-go/releases/latest"><img alt="官方版本（原作者 ccch1mneyyy 发布）" src="https://img.shields.io/static/v1?label=%E5%AE%98%E6%96%B9%E7%89%88%E6%9C%AC&message=%E5%8E%9F%E4%BD%9C%E8%80%85%E5%8F%91%E5%B8%83&color=6B7280&logo=github&logoColor=white&style=for-the-badge&labelColor=2B3245"></a>
 </p>
 
 <p align="center">
-  <b>感谢大家对 DSH Go 的支持和喜爱，我将尽快适配 iOS 和鸿蒙！大家 Star 点得越多，我适配得越快哦 hhh</b>
+  <sub>官方下载页：<a href="https://go.dshtui.com/download">go.dshtui.com/download</a>。本项目是 <a href="https://github.com/ccch1mneyyy/dsh-go">ccch1mneyyy/dsh-go</a> 的 fork，APK 由 yunhai89 发布，与官方版本各自独立更新。</sub><br>
+  <sub>本项目的 APK 使用自己的签名，和官方版本、早期测试包都不能互相覆盖安装；切换需先卸载旧版，卸载会清空对话、Linux 环境和设置。装过本项目版本后，后续版本可直接覆盖更新。</sub>
 </p>
 
 <p align="center">
-  <a href="https://github.com/ccch1mneyyy/dsh-go/stargazers"><img alt="GitHub Star 数" src="https://img.shields.io/github/stars/ccch1mneyyy/dsh-go?style=flat-square&logo=github&label=Star&color=4B67B4&labelColor=2B3245"></a>
+  <b>感谢大家对 DSH Go 的支持和喜爱。本项目是 fork，聚焦 Android 端的修复与改进；iOS 与鸿蒙版本请关注<a href="https://github.com/ccch1mneyyy/dsh-go">官方项目</a>。</b>
 </p>
 
 <p align="center">
-  <sub>第一次用可以先看<a href="docs/guide/README.md">使用指南</a>，遇到问题欢迎来<a href="#community">论坛和 QQ 群</a>。</sub><br>
-  <sub>手机上装过签名不同的早期测试包时不能直接覆盖安装，需要先卸载旧版；卸载会清空对话、Linux 环境和设置。</sub>
+  <a href="https://github.com/yunhai89/dsh-Go/stargazers"><img alt="GitHub Star 数" src="https://img.shields.io/github/stars/yunhai89/dsh-Go?style=flat-square&logo=github&label=Star&color=4B67B4&labelColor=2B3245"></a>
+</p>
+
+<p align="center">
+  <sub>第一次用可以先看<a href="docs/guide/README.md">使用指南</a>，遇到问题欢迎来<a href="#community">论坛和 QQ 群</a>。</sub>
 </p>
 
 <br>
@@ -188,7 +187,7 @@ DSH Go 提供聊天界面、本机运行环境和远程连接，是基于 [DeepS
 
 安装要求为 Android 8.0（API 26）及以上。Release 页面上的 **arm64** 安装包适用于常见的 64 位 Android 手机；x86_64 设备和模拟器用的 x64 包在发布说明末尾的「其他版本下载」里。仓库没有 32 位 ARM 构建。
 
-1. 从 [GitHub Releases](https://github.com/ccch1mneyyy/dsh-go/releases/latest) 或[官网下载页](https://go.dshtui.com/download)下载对应架构的 APK，并按系统提示允许该安装来源。
+1. 从[本项目的 GitHub Releases](https://github.com/yunhai89/dsh-Go/releases/latest)下载对应架构的 APK，并按系统提示允许该安装来源。想装官方版本，可去[官方 Releases](https://github.com/ccch1mneyyy/dsh-go/releases/latest)或[官网下载页](https://go.dshtui.com/download)；两者签名不同，不能互相覆盖安装。
 2. 首次启动时，选择在本机安装运行环境，或连接远程主机。
 3. 为所选主机配置模型和所需凭据，再开始对话；部分远程渠道需要在主机侧配置。
 
@@ -258,11 +257,11 @@ Android 8 及以上。手机直接下载 Release 页面上的安装包即可，�
 
 以下流程面向 **Linux x86_64**。当前工具链脚本默认安装 JDK 17、Flutter 3.47.7 和 Android SDK/NDK；App 要求 Dart `^3.13.5`。准备 Bash、Git、curl、tar、unzip、xz、Python 3、zstd（Python 未提供 `compression.zstd` 时用于解包 zstd 压缩的 deb）、file 和常见 GNU 命令；重新解析 Ubuntu 软件包锁时还需要 gpgv。
 
-先取得完整源码和项目资源。`app/pubspec.yaml` 声明的字体、图片等都是构建输入，运行时包由下面的脚本生成。
+先取得本项目（fork）的完整源码和项目资源；上游官方源码在 <https://github.com/ccch1mneyyy/dsh-go>。`app/pubspec.yaml` 声明的字体、图片等都是构建输入，运行时包由下面的脚本生成。
 
 ```bash
-git clone https://github.com/ccch1mneyyy/dsh-go.git
-cd dsh-go
+git clone https://github.com/yunhai89/dsh-Go.git
+cd dsh-Go
 
 bash tooling/setup-toolchain.sh
 source tooling/env.sh
@@ -309,7 +308,7 @@ DSH_BETA_TOKEN_FILE= bash tooling/build-apk.sh --dry-run -f all
 
 ## 参与贡献
 
-问题反馈和改进建议可提交到 [Issues](https://github.com/ccch1mneyyy/dsh-go/issues)。代码、文档和翻译贡献请先看 [CONTRIBUTING.md](CONTRIBUTING.md)。插件作者可以从[插件教程](docs/plugins/README.md)和 [SDK](sdk/plugin-kit/README.md)开始。
+问题反馈和改进建议可提交到[本项目的 Issues](https://github.com/yunhai89/dsh-Go/issues)；官方版本本身的问题请提到[上游 Issues](https://github.com/ccch1mneyyy/dsh-go/issues)。代码、文档和翻译贡献请先看 [CONTRIBUTING.md](CONTRIBUTING.md)。插件作者可以从[插件教程](docs/plugins/README.md)和 [SDK](sdk/plugin-kit/README.md)开始。
 
 安全问题请按 [SECURITY.md](SECURITY.md) 报告，避免在公开 Issue 中提交漏洞细节或凭据。
 

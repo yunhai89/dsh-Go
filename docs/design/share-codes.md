@@ -111,7 +111,7 @@
 
 ## 5. 着陆页
 
-`site/share/`：一个 `index.html`（样式内联）+ `share.js`，不用构建。读 `#p=` / `#gist=`，在浏览器里解压、校验、显示卡片（名称、来源、版本、里面有什么），两个按钮：「用 dsh-go 打开」（`dshgo://…`）、「下载 dsh-go」（`github.com/ccch1mneyyy/dsh-go/releases/latest`）。浅色 / 深色跟系统。
+`site/share/`：一个 `index.html`（样式内联）+ `share.js`，不用构建。读 `#p=` / `#gist=`，在浏览器里解压、校验、显示卡片（名称、来源、版本、里面有什么），两个按钮：「用 dsh-go 打开」（`dshgo://…`）、「下载 dsh-go」（`github.com/yunhai89/dsh-Go/releases/latest`）。浅色 / 深色跟系统。
 
 - 不上传任何东西；CSP 只允许自己的脚本，`connect-src` 只有 GitHub API（Gist 链接要取 Gist）。所有数据用 `textContent` 写进页面。
 - 微信内置浏览器打不开自定义 scheme：检测到时提示在浏览器中打开。
