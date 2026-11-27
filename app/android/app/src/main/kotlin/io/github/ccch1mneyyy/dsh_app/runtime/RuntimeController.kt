@@ -14,8 +14,12 @@ import io.github.ccch1mneyyy.dsh_app.phone.PhoneControl
 import io.github.ccch1mneyyy.dsh_app.phone.DiagnosticsTool
 import org.json.JSONArray
 import org.json.JSONObject
+import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneSkillStore
+import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneSkillValidation
+import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneSkillProblem
 import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneSkillRoute
 import java.io.File
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
 
 /**
@@ -51,6 +55,19 @@ class RuntimeController private constructor(private val app: Context) : DshProce
     private val lkgFile = File(app.filesDir, "runtime/lkg/lkg.json")
     private val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val workspaceRecovery = WorkspaceRecoveryMode(prefs.getBoolean(K_WORKSPACE_RECOVERY, false))
+    private val serviceRecovery = RuntimeServiceRecovery(
+        RuntimeServiceRecovery.Snapshot.decode(prefs.getInt(K_SERVICE_RECOVERY, -1)),
+    ) { snapshot ->
+        runCatching {
+            val edit = prefs.edit()
+            if (snapshot == null) edit.remove(K_SERVICE_RECOVERY) else edit.putInt(K_SERVICE_RECOVERY, snapshot.encode())
+            edit.apply()
+            true
+        }.getOrElse {
+            note("[dsh-app] service recovery hint update failed; system recreation disabled")
+            false
+        }
+    }
 
     val manifest: RuntimeManifest by lazy { RuntimeManifest.load(app) }
     private val installer by lazy { RuntimeInstaller(app, manifest, ::note) }
@@ -124,6 +141,9 @@ class RuntimeController private constructor(private val app: Context) : DshProce
     fun addSink(sink: EventSink) = synchronized(sinks) { sinks += sink }
     fun removeSink(sink: EventSink) = synchronized(sinks) { sinks -= sink }
 
+    internal fun shouldAutoStart(autoStart: Boolean): Boolean =
+        LaunchStart.shouldStart(autoStart, phase.wire, safeState.wire, autoSafe(), strikes)
+
     fun status(): Map<String, Any?> = mapOf(
         "abi" to (runCatching { manifest.abi }.getOrNull() ?: Build.SUPPORTED_ABIS.firstOrNull()),
         "bundledVersion" to runCatching { manifest.runtimeVersion }.getOrNull(),
@@ -153,6 +173,8 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         "tawcEngineEnabled" to tawcEngine().enabled,
         "tawcEngineAvailable" to (tawcEngineUnavailable() == null),
         "tawcEngineActive" to (process?.executionMode == "tawcroot"),
+        "tawcRecoveryAvailable" to (failure?.prootCompatibilityFailure == true && !currentModeSafe() &&
+            tawcEngine().saved != true && tawcEngineUnavailable() == null),
         "currentExecutionMode" to process?.executionMode,
         "launchSelectedMode" to lastLaunch?.selectedMode,
         "launchSpawned" to (lastLaunch?.spawned == true),
@@ -166,12 +188,18 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         failedRuntime = prefs.getString(K_DIRECT_FAILED, null),
         runtime = runCatching { manifest.runtimeVersion }.getOrNull(),
     )
-    private fun tawcEngine() = DirectLaunch.Preference(
-        saved = prefs.getBoolean(K_TAWC_ENGINE, false),
-        available = tawcEngineUnavailable() == null,
-        failedRuntime = prefs.getString(K_TAWC_FAILED, null),
-        runtime = runCatching { manifest.runtimeVersion }.getOrNull(),
-    )
+    private fun tawcEngine(): DirectLaunch.Preference {
+        val available = tawcEngineUnavailable() == null
+        return DirectLaunch.Preference(
+            // On by default where this build can run it, unless Direct was chosen. A start that
+            // never gets DSH up falls back to PRoot for this runtime (K_TAWC_FAILED).
+            saved = if (prefs.contains(K_TAWC_ENGINE)) prefs.getBoolean(K_TAWC_ENGINE, false)
+                else available && !prefs.getBoolean(K_DIRECT_ENGINE, false),
+            available = available,
+            failedRuntime = prefs.getString(K_TAWC_FAILED, null),
+            runtime = runCatching { manifest.runtimeVersion }.getOrNull(),
+        )
+    }
     private fun tawcEngineUnavailable(): String? =
         TawcrootLaunch.unavailable(app.applicationInfo.nativeLibraryDir, android.os.Build.VERSION.SDK_INT)
 
@@ -193,7 +221,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
     }
 
     /**
-     * The opt-in tawcroot launch, off by default; same rules as [setDirectEngine]. Only one
+     * The tawcroot launch, on by default; same rules as [setDirectEngine]. Only one
      * of the two is on at a time. Turning it on forgets an earlier failed tawcroot start.
      */
     @Synchronized fun setTawcEngine(enabled: Boolean) {
@@ -278,7 +306,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
      * Starts the foreground service, which calls [startProcess]. [mode] is "safe", "normal"
      * (leaving safe mode starts a two-minute trial) or null to keep the current mode.
      */
-    fun start(
+    @Synchronized fun start(
         env: Map<String, String>,
         phoneStorage: Boolean = false,
         mode: String? = null,
@@ -286,15 +314,41 @@ class RuntimeController private constructor(private val app: Context) : DshProce
     ) {
         pendingPhoneStorage = phoneStorage
         pendingVisualReplies = visualReplies
-        if (phase == Phase.RUNNING || phase == Phase.STARTING) return
-        pendingEnv = env
+        if (phase == Phase.RUNNING || phase == Phase.STARTING) {
+            serviceRecovery.request(RuntimeServiceRecovery.Snapshot(phoneStorage, visualReplies), pendingEnv.isNotEmpty(), newStart = false)
+            return
+        }
+        pendingEnv = env.toMap()
+        serviceRecovery.request(RuntimeServiceRecovery.Snapshot(phoneStorage, visualReplies), pendingEnv.isNotEmpty())
+        if (pendingEnv.isNotEmpty()) note("[dsh-app] temporary launch environment; system service recreation disabled")
         val next = SafePolicy.onStartRequest(safeState, mode)
         if (next != safeState) {
             setSafeState(next, if (next == SafeState.ON) SafePolicy.REASON_MANUAL else safeReason)
         }
         val intent = Intent(app, DshService::class.java).setAction(DshService.ACTION_START)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) app.startForegroundService(intent) else app.startService(intent)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) app.startForegroundService(intent) else app.startService(intent)
+        } catch (e: Exception) {
+            serviceRecovery.clear()
+            throw e
+        }
     }
+
+    @Synchronized internal fun prepareServiceStart(recreated: Boolean): Boolean {
+        if (resetting || phase == Phase.INSTALLING || phase == Phase.STOPPING) return false
+        val options = serviceRecovery.optionsForStart(recreated) ?: run {
+            if (recreated) note("[dsh-app] service recreation skipped: no recoverable launch options")
+            return false
+        }
+        pendingPhoneStorage = options.phoneStorage
+        pendingVisualReplies = options.visualReplies
+        return true
+    }
+
+    internal fun canRecreateService(): Boolean = serviceRecovery.canRecreate && !resetting &&
+        phase in setOf(Phase.STARTING, Phase.RUNNING)
+
+    @Synchronized internal fun clearServiceRecovery() = serviceRecovery.clear()
 
     // The attached Flutter engine owns collection; detaching it revokes only its callback.
     @Volatile private var diagnosticsRefresh: (() -> Boolean)? = null
@@ -326,7 +380,10 @@ class RuntimeController private constructor(private val app: Context) : DshProce
     }
 
     fun stop() {
-        synchronized(this) { phoneSkillStoppedGeneration = maxOf(phoneSkillStoppedGeneration, runGen) }
+        synchronized(this) {
+            serviceRecovery.clear()
+            phoneSkillStoppedGeneration = maxOf(phoneSkillStoppedGeneration, runGen)
+        }
         managedSkillGate.stop(runGen)
         val intent = Intent(app, DshService::class.java).setAction(DshService.ACTION_STOP)
         app.startService(intent)
@@ -368,6 +425,24 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         origin.runtime === this && phase == Phase.RUNNING && !runSafe && !resetting &&
             runGen == origin.generation && stopGen < origin.generation &&
             phoneSkillStoppedGeneration < origin.generation && runGen == origin.generation
+
+    /** One rootfs owner for native UI mutations, learned-skill reads, reset and publication. */
+    internal fun <T> phoneSkills(origin: PhoneSkillOrigin?, work: (PhoneSkillStore) -> T):
+        CompletableFuture<T> {
+        val result = CompletableFuture<T>()
+        worker.execute {
+            try {
+                if (resetting || origin != null && !phoneSkillOriginCurrent(origin)) {
+                    throw PhoneSkillProblem("unavailable", "Runtime retired.")
+                }
+                val store = PhoneSkillStore(installer.rootfs, File(app.filesDir, "phone-skills"),
+                    PhoneSkillValidation::clean,
+                    PhoneSkillValidation::redactLegacy)
+                result.complete(work(store))
+            } catch (e: Exception) { result.completeExceptionally(e) }
+        }
+        return result
+    }
 
     /** Uses the existing rootfs worker. The only descriptor input is the native reviewed table;
      * private UI/JSON never supplies it. An empty table has no executable App registration.
@@ -479,6 +554,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
 
     @Synchronized internal fun startProcess() {
         if (process != null || phase == Phase.INSTALLING || phase == Phase.STOPPING) return
+        serviceRecovery.beginRun()
         lastLaunch = null
         val problem = try {
             if (installer.isCurrent()) null else "runtime not installed"
@@ -488,7 +564,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         if (problem != null) {
             error = problem
             setPhase(Phase.ERROR)
-            DshService.stopSelfIfRunning(app, runGen)
+            DshService.stopSelfIfRunning(app, runGen, serviceRecovery.runStopOwner)
             return
         }
         baseUrl = null
@@ -504,6 +580,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         timeline.requested()
         worker.execute {
             var launched: DshProcess? = null
+            var siwcStore: SiwcStoreBridge? = null
             try {
                 try {
                     installer.cleanupCommittedUpgrade()
@@ -546,6 +623,14 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                         null
                     }
                 }
+                // Only the installed native endpoint may advertise SIWC for this launch.
+                env.remove(SiwcStoreBridge.ENV)
+                val launchStore = if (authOverlay && AppAuthGuest.writeSiwcFiles(app, installer.rootfs)) {
+                    try { SiwcStoreBridge.start(app) } catch (_: Exception) { null }
+                } else null
+                siwcStore = launchStore
+                if (launchStore != null) env[SiwcStoreBridge.ENV] = launchStore.endpoint
+                else if (authOverlay) log("[dsh-app] OpenAI SIWC secure storage not mounted", "system")
                 // startProcess advances runGen under this same monitor. Publish only while
                 // this queued launch still owns that generation; once published, its non-null
                 // process prevents another start from advancing the generation underneath it.
@@ -554,6 +639,11 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                     else DshProcess(
                         app, manifest, installer.rootfs,
                         object : DshProcess.Listener by this@RuntimeController {
+                            override fun onExit(source: DshProcess, code: Int, expected: Boolean) {
+                                launchStore?.close()
+                                this@RuntimeController.onExit(source, code, expected)
+                            }
+
                             override fun onLog(line: String, stream: String, storageLine: String) {
                                 if (stream != "system") {
                                     synchronized(runTail) {
@@ -572,6 +662,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                         process = it
                     }
                 } ?: run {
+                    launchStore?.close()
                     PhoneControl.get(app).onEngineStopped()
                     return@execute
                 }
@@ -588,6 +679,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                 }
                 if (phone) PhoneControl.get(app).launched(p.phoneMounted)
             } catch (e: Throwable) {
+                siwcStore?.close()
                 // Keep ownership while the old UID sweep runs, including a
                 // failure after spawning but before the waiter was allocated.
                 launched?.launchDiagnostics?.failed("startFailed")
@@ -596,6 +688,19 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                     if (gen != runGen) return@execute
                     process = null
                     PhoneControl.get(app).onEngineStopped()
+                    if (launched?.tawc == true && stopGen < gen && !resetting) {
+                        // A tawcroot start that threw: the same fallback as onExit's, unless
+                        // onExit (through awaitExit) already took it.
+                        val runtime = manifest.runtimeVersion
+                        if (prefs.getString(K_TAWC_FAILED, null) != runtime) {
+                            prefs.edit().putString(K_TAWC_FAILED, runtime).apply()
+                            log("[dsh-app] tawcroot launch failed (${e.message ?: e.javaClass.simpleName}); starting again with compatible launch", "system")
+                            error = null
+                            setPhase(Phase.STARTING)
+                            restartNow("with compatible launch")
+                        }
+                        return@execute
+                    }
                     val startupError = launched?.startupError
                     if (startupError == null && stopGen >= gen) {
                         // A cancelled preparation can throw before a waiter exists.
@@ -604,17 +709,18 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                     }
                     publishStartupFailure(startupError ?: e.message ?: e.javaClass.simpleName, ownerReleased = true)
                     log("[dsh-app] $error", "system")
-                    if (!resetting) DshService.stopSelfIfRunning(app, gen)
+                    if (!resetting) DshService.stopSelfIfRunning(app, gen, serviceRecovery.runStopOwner)
                 }
             }
         }
     }
 
-    @Synchronized internal fun stopProcess(expectedGeneration: Int? = null): Boolean {
-        // An automatic stop can arrive after a newer START service intent.
-        // Check under the same monitor that advances runGen and retires the process.
-        if (expectedGeneration != null && expectedGeneration != runGen) return false
+    @Synchronized internal fun stopProcess(expectedGeneration: Int? = null, expectedOwner: String? = null): Boolean {
+        // An automatic stop can arrive after a new request but before its START is consumed.
+        // Check under the same monitor that accepts starts and advances runGen.
+        if (!RuntimeServiceRecovery.acceptsStop(expectedGeneration, runGen, expectedOwner, serviceRecovery.stopOwner)) return false
         if (phase == Phase.INSTALLING) return false
+        serviceRecovery.clear()
         stopGen = runGen
         val p = process
         if (p == null) {
@@ -674,6 +780,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
      * [keep], which the next install puts back.
      */
     @Synchronized fun reset(keep: Set<ResetKeep> = emptySet(), onDone: (Throwable?) -> Unit) {
+        serviceRecovery.clear()
         stopGen = runGen
         resetting = true
         setPhase(Phase.STOPPING)
@@ -968,6 +1075,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                 recent = list("recent"),
                 diagnostics = if (json.isNull("diagnostics")) null else json.optString("diagnostics"),
                 upSeconds = if (json.isNull("upSeconds")) null else json.optLong("upSeconds"),
+                prootCompatibilityFailure = json.optBoolean("prootCompatibilityFailure"),
             )
         }
     } catch (_: Exception) {
@@ -1080,12 +1188,12 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                 // An accepted failure survives a later STOP. Reset still owns its final state.
                 // Neither a deadline nor a local launch error is evidence against a plugin.
                 if (!resetting) DshService.postStoppedAlert(app)
-                DshService.stopSelfIfRunning(app, runGen)
+                DshService.stopSelfIfRunning(app, runGen, serviceRecovery.runStopOwner)
                 return
             }
             if (expected || stopGen >= runGen) {
                 if (!resetting && phase == Phase.STOPPING) setPhase(Phase.INSTALLED)
-                DshService.stopSelfIfRunning(app, runGen)
+                DshService.stopSelfIfRunning(app, runGen, serviceRecovery.runStopOwner)
                 return
             }
             if (SafePolicy.directLaunchFailed(f, source.direct)) {
@@ -1096,7 +1204,11 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                 restartNow("with compatible launch")
                 return
             }
-            if (!runSafe) f = f.copy(recent = recentChanges())
+            if (!runSafe) f = f.copy(
+                recent = recentChanges(),
+                prootCompatibilityFailure = source.launchDiagnostics.selectedMode == "proot" &&
+                    CrashClassifier.isProotCompatibilityFailure(f, tail),
+            )
             val outcome = SafePolicy.onFailure(safeState, strikes, f, autoSafe(),
                 AppStrings.get(app, R.string.safe_probation_failed), AppStrings.get(app, R.string.safe_auto_started))
             val now = SystemClock.elapsedRealtime()
@@ -1128,7 +1240,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
             } else {
                 setPhase(Phase.ERROR)
                 DshService.postStoppedAlert(app)
-                DshService.stopSelfIfRunning(app, runGen)
+                DshService.stopSelfIfRunning(app, runGen, serviceRecovery.runStopOwner)
             }
         } finally {
             runtimeLogs.flush()
@@ -1157,9 +1269,12 @@ class RuntimeController private constructor(private val app: Context) : DshProce
     private fun log(line: String, stream: String, storageLine: String = line) = runtimeLogs.accept(line, stream, storageLine)
 
     private fun setPhase(next: Phase) {
+        if (next == Phase.ERROR && serviceRecovery.canRecreate) note("[dsh-app] runtime failed; system service recreation disabled")
+        if (next in setOf(Phase.INSTALLED, Phase.NOT_INSTALLED, Phase.INSTALLING, Phase.ERROR)) serviceRecovery.clear()
         if (next != Phase.RUNNING) managedSkillGate.retire()
         phase = next
         emitStatus()
+        main.post { AndroidBackgroundProtection.get(app).refresh() }
         DshService.updateNotification(app)
     }
 
@@ -1183,6 +1298,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         private const val K_MOVED = "movedAside"
         private const val K_AUTO_SAFE = "autoSafe"
         private const val K_WORKSPACE_RECOVERY = "workspaceRecovery"
+        private const val K_SERVICE_RECOVERY = "serviceRecoveryOptions"
         private const val K_DIRECT_ENGINE = "directEngine"
         /** Runtime version Direct failed to launch with (see [SafePolicy.directLaunchFailed]). */
         private const val K_DIRECT_FAILED = "directEngineFailedRuntime"

@@ -145,8 +145,9 @@ extension _ScriptGenerationCommit on _ScriptCoordinator {
     if (request is! TavernScriptRawRequest && chat == null && record.slashSpec?.raw != true) {
       throw _scriptError(TavernScriptErrorCode.noContext, 'generate', 'Normal generation requires a chat.');
     }
-    final metadata = chat == null ? <String, Object?>{} : engine._chatCodec.metadataForNode(engine._store, chat.id);
-    final persistentSource = chat == null ? null : engine._chatCodec.metadataSourceForNode(engine._store, chat.id);
+    final capturedMetadata = chat == null ? null : _captureScriptMetadata(chat);
+    final metadata = capturedMetadata?.metadata ?? <String, Object?>{};
+    final persistentSource = capturedMetadata?.source;
     final candidates = includeInjections
         ? injectionRegistry.capture(
             chatId: chatId,
@@ -155,7 +156,13 @@ extension _ScriptGenerationCommit on _ScriptCoordinator {
             request: request.injects,
           )
         : <_ScriptInjectionCandidate>[];
-    final needs = needsOverride ?? generationNeeds(request, candidates);
+    var needs = needsOverride ?? generationNeeds(request, candidates);
+    final explicitRaw = request.presetId == null
+        ? const <String, Object?>{}
+        : engine._requirePreset(request.presetId!).raw;
+    if (_spRows(explicitRaw['prompts']).any((entry) => presetTruthy(entry['spreset_condition_enabled']))) {
+      needs = _ScriptGenerationNeeds(history: true, card: needs.card, worldInfo: needs.worldInfo);
+    }
     final stateNeeded = needs.history || needs.worldInfo;
     final anchor = stateNeeded ? chat?.currentLeafId : null;
     final group = chat == null ? null : engine._store.groupChat(chat.id);
@@ -193,7 +200,13 @@ extension _ScriptGenerationCommit on _ScriptCoordinator {
             target: _generationFieldVersion(chat.id, target),
       },
     );
-    final resourcesNeeded = needs.history || needs.card || needs.worldInfo || request is! TavernScriptRawRequest;
+    final resourcesNeeded =
+        needs.history ||
+        needs.card ||
+        needs.worldInfo ||
+        request is! TavernScriptRawRequest ||
+        request.presetId != null ||
+        _helperOptions(request) != null;
     final persona = resourcesNeeded ? engine._personas.resolve(personaId: chat?.personaId) : null;
     final settings = resourcesNeeded
         ? _runtimeCopy(_personaSettings(engine._effectiveSettings(chat, metadata), persona!))
@@ -205,7 +218,7 @@ extension _ScriptGenerationCommit on _ScriptCoordinator {
     ChatPreset? promptPreset;
     if (request.presetId != null) {
       promptPreset = ChatPreset(engine._requirePreset(request.presetId!).raw);
-    } else if (request is! TavernScriptRawRequest) {
+    } else if (request is! TavernScriptRawRequest || _helperOptions(request) != null) {
       promptPreset = contextPresetRaw.isEmpty ? ChatPreset.stDefault() : ChatPreset(contextPresetRaw);
     }
     final actorId =
@@ -271,6 +284,7 @@ extension _ScriptGenerationCommit on _ScriptCoordinator {
       promptPreset: promptPreset,
       capturedChatState: stateNeeded && chat != null,
       gameplayCapture: gameplayCapture,
+      helper: record.helper,
     );
   }
 

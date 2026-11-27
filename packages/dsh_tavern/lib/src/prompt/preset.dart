@@ -2,6 +2,7 @@
 // Source commit: 7e8663cd9c184a550b37238218bdd32c6efc68e9 (1.19.0).
 import 'dart:convert';
 
+import '../json_copy.dart';
 import 'default_preset.dart';
 
 /// A lossless JSON preset plus a normalized, independent execution view.
@@ -15,7 +16,9 @@ final class ChatPreset {
     return ChatPreset(value);
   }
 
-  factory ChatPreset.stDefault() => ChatPreset.decode(stDefaultPresetJson);
+  factory ChatPreset.stDefault() => _defaultPreset;
+
+  static final _defaultPreset = ChatPreset.decode(stDefaultPresetJson);
 
   final Map<String, Object?> _raw;
 
@@ -32,7 +35,15 @@ final class ChatPreset {
     return const JsonEncoder.withIndent('  ').convert(value);
   }
 
-  Map<String, Object?> get settings {
+  /// Detached normalized settings for callers that need to edit a copy.
+  Map<String, Object?> get settings => _copy(executionSettings);
+
+  /// Recursively immutable normalized projection, compiled once per preset.
+  /// Read-only execution paths can retain this view without copying extension
+  /// payloads; [raw] and [settings] keep their independent mutable contracts.
+  late final Map<String, Object?> executionSettings = _freeze(_normalize()) as Map<String, Object?>;
+
+  Map<String, Object?> _normalize() {
     final defaults = jsonDecode(stDefaultPresetJson) as Map<String, Object?>;
     // Runtime defaults differ slightly from the bundled named Default preset.
     defaults['stream_openai'] = false;
@@ -96,8 +107,15 @@ final class ChatPreset {
     return result;
   }
 
-  static Map<String, Object?> _copy(Map<String, Object?> value) =>
-      jsonDecode(jsonEncode(value)) as Map<String, Object?>;
+  static Object? _freeze(Object? value) {
+    if (value is Map<String, Object?>) {
+      return Map<String, Object?>.unmodifiable({for (final entry in value.entries) entry.key: _freeze(entry.value)});
+    }
+    if (value is List<Object?>) return List<Object?>.unmodifiable(value.map(_freeze));
+    return value;
+  }
+
+  static Map<String, Object?> _copy(Map<String, Object?> value) => copyJsonObject(value);
 
   // Explicit export choice; this does not remove unfamiliar extension data.
   static const _connectionFields = {

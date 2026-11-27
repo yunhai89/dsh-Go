@@ -53,18 +53,23 @@ class ChatHeader extends ConsumerStatefulWidget {
     super.key,
     required this.title,
     required this.status,
+    this.sessionStatus,
     this.detail,
     this.trailing,
     this.onOpenDrawer,
     this.onTitleTap,
     this.onNewChat,
+    this.onCall,
     this.scrolledUnder,
   });
 
   final String title;
   final HeaderStatus status;
 
-  /// What follows the status under the title (a phone: the workspace). Shortens first.
+  /// Session activity or sync state, separate from the remote link status.
+  final HeaderStatus? sessionStatus;
+
+  /// What follows the status under the title when no session status is shown. Shortens first.
   final String? detail;
 
   /// 右侧件(模型胶囊 [ModelChip])。需要传 `grouped: true` 与顶栏共享一次
@@ -74,6 +79,9 @@ class ChatHeader extends ConsumerStatefulWidget {
   final VoidCallback? onOpenDrawer;
   final VoidCallback? onTitleTap;
   final VoidCallback? onNewChat;
+
+  /// 「语音通话」 with this conversation; the key sits before 新对话's.
+  final VoidCallback? onCall;
 
   /// Whether content has scrolled under the bar, 0..1. Drives the top fade:
   /// at rest the page is one clean surface, the fade only appears once there is
@@ -125,10 +133,13 @@ class _ChatHeaderState extends ConsumerState<ChatHeader> {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
     final dsh = DshColors.of(context);
+    final themeStyle = DshThemeStyle.of(context);
+    final headerButtonStyle = themeStyle.headerGlass(colors);
     final top = MediaQuery.paddingOf(context).top;
     final barHeight = ChatHeader.barHeightOf(context);
     final pillHeight = ChatHeader.pillHeightOf(context);
-    final titleStyle = theme.textTheme.titleSmall?.copyWith(fontSize: 15, height: 1.3);
+    final baseTitleStyle = theme.textTheme.titleSmall?.copyWith(fontSize: 15, height: 1.3);
+    final titleStyle = baseTitleStyle == null ? null : themeStyle.headerTitleTextStyle(baseTitleStyle);
     final statusStyle = theme.textTheme.labelSmall?.copyWith(fontSize: 11, height: 1.25);
     final titleFloor = _titleFloor(context, statusStyle);
     // The schedule clock widens the pill by this much over its plain right
@@ -174,6 +185,7 @@ class _ChatHeaderState extends ConsumerState<ChatHeader> {
                             dimension: 44,
                             child: GlassSurface(
                               tier: GlassTier.chrome,
+                              style: headerButtonStyle,
                               circle: true,
                               grouped: true,
                               onTap: widget.onOpenDrawer,
@@ -189,6 +201,7 @@ class _ChatHeaderState extends ConsumerState<ChatHeader> {
                     hint: widget.onTitleTap == null ? null : l10n.chatViewChatDetails,
                     child: GlassSurface(
                       tier: GlassTier.chrome,
+                      style: headerButtonStyle,
                       stadium: true,
                       grouped: true,
                       onTap: widget.onTitleTap,
@@ -235,8 +248,15 @@ class _ChatHeaderState extends ConsumerState<ChatHeader> {
                                           ),
                                         ],
                                       ),
-                                      detail: switch (widget.detail) {
-                                        final detail? => FluidTextSwap(
+                                      detail: switch ((widget.sessionStatus, widget.detail)) {
+                                        (final session?, _) => _StatusLabel(
+                                          status: session,
+                                          prefix: ' · ',
+                                          style: statusStyle?.copyWith(
+                                            color: session.tone == StatusTone.warn ? dsh.warning : dsh.textTertiary,
+                                          ),
+                                        ),
+                                        (_, final detail?) => FluidTextSwap(
                                           value: detail,
                                           child: Text(
                                             ' · $detail',
@@ -245,7 +265,7 @@ class _ChatHeaderState extends ConsumerState<ChatHeader> {
                                             style: statusStyle?.copyWith(color: dsh.textTertiary),
                                           ),
                                         ),
-                                        null => const SizedBox.shrink(),
+                                        _ => const SizedBox.shrink(),
                                       },
                                     ),
                                   ],
@@ -267,11 +287,31 @@ class _ChatHeaderState extends ConsumerState<ChatHeader> {
                       null => null,
                     },
                   ),
-                  // Mirrors the menu key; gone on the new-chat screen. On a
-                  // wide window the key that unfolds 对话详情 follows it.
+                  // 语音通话, then 新对话: it mirrors the menu key and is gone on
+                  // the new-chat screen. On a wide window the key that unfolds
+                  // 对话详情 follows them.
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (widget.onCall case final onCall?)
+                        Padding(
+                          padding: const EdgeInsets.only(left: HeaderTrailingSlot.gap),
+                          child: SizedBox.square(
+                            key: const ValueKey('chat-call'),
+                            dimension: 44,
+                            child: GlassSurface(
+                              tier: GlassTier.chrome,
+                              style: headerButtonStyle,
+                              circle: true,
+                              grouped: true,
+                              onTap: onCall,
+                              child: Tooltip(
+                                message: l10n.speechCallTile,
+                                child: Center(child: Icon(AppIcons.call, size: 21, color: colors.onSurface)),
+                              ),
+                            ),
+                          ),
+                        ),
                       SmoothSize(
                         duration: AppMotion.of(context, AppMotion.quick),
                         child: widget.onNewChat == null
@@ -283,6 +323,7 @@ class _ChatHeaderState extends ConsumerState<ChatHeader> {
                                   dimension: 44,
                                   child: GlassSurface(
                                     tier: GlassTier.chrome,
+                                    style: headerButtonStyle,
                                     circle: true,
                                     grouped: true,
                                     onTap: widget.onNewChat,
@@ -680,10 +721,7 @@ class _RenderStatusLine extends RenderBox
     final (status, detail) = _measure(constraints, ChildLayoutHelper.layoutChild);
     size = _sizeOf(constraints, status, detail);
     (firstChild!.parentData! as _StatusLineParentData).offset = Offset(0, (size.height - status.height) / 2);
-    (lastChild!.parentData! as _StatusLineParentData).offset = Offset(
-      status.width,
-      (size.height - detail.height) / 2,
-    );
+    (lastChild!.parentData! as _StatusLineParentData).offset = Offset(status.width, (size.height - detail.height) / 2);
   }
 
   @override
@@ -695,10 +733,11 @@ class _RenderStatusLine extends RenderBox
 }
 
 class _StatusLabel extends StatelessWidget {
-  const _StatusLabel({required this.status, required this.style});
+  const _StatusLabel({required this.status, required this.style, this.prefix = ''});
 
   final HeaderStatus status;
   final TextStyle? style;
+  final String prefix;
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -708,7 +747,7 @@ class _StatusLabel extends StatelessWidget {
     excludeSemantics: true,
     child: FluidTextSwap(
       value: status.label,
-      child: Text(status.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
+      child: Text('$prefix${status.label}', maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
     ),
   );
 }

@@ -12,7 +12,6 @@ import '../../../l10n/l10n.dart';
 import '../../../speech/read_aloud.dart';
 import '../../speech/speech_ui.dart';
 import '../../common/expand_reveal.dart';
-import '../../common/fluid_bits.dart';
 import '../../common/typing_indicator.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/theme.dart';
@@ -21,7 +20,9 @@ import '../../plugins/native/message_plugin_menu.dart';
 import '../../share/share_entry.dart' show shareReply;
 import '../render/markdown_body.dart';
 import 'message_actions.dart';
+import 'message_selection.dart';
 import 'stream_row.dart';
+import 'theme_role_tag.dart';
 import 'thinking_pill.dart';
 
 /// 三个点交给下一块内容:旧的线性淡出,新的淡入并上移一点。
@@ -43,9 +44,9 @@ const _firstTextIn = Duration(milliseconds: 200);
 ///                    ↻ 重新回答只给整个对话的最后一条)
 /// ```
 ///
-/// ⇪ 和菜单里的「分享」打开同一个分享面板。长按或 ⋯:同一个消息菜单(复制 /
-/// 选择文字 / 引用 / 分享 / 重新回答 / 从这里分叉)。正文因此不再直接长按选字,选字走菜单里的
-/// "选择文字",选中一段还能「引用」。
+/// ⇪ 和菜单里的「分享」打开同一个分享面板。⋯:消息菜单(复制 / 选择文字 / 引用 /
+/// 分享 / 重新回答 / 从这里分叉)。正文长按就地选字([MessageSelection]),选区上的
+/// 「更多」也打开这个菜单。
 class AssistantMessage extends StatefulWidget {
   const AssistantMessage({
     super.key,
@@ -87,6 +88,7 @@ class AssistantMessage extends StatefulWidget {
 }
 
 class _AssistantMessageState extends State<AssistantMessage> {
+  ThinkingPill? _thinking;
   Widget? _body;
   String? _bodyText;
   bool? _bodyStreaming;
@@ -123,7 +125,8 @@ class _AssistantMessageState extends State<AssistantMessage> {
     final old = oldWidget.item;
     final item = widget.item;
     _waited = _waited || _waiting(item);
-    if (old.streaming &&
+    if (!_textAfterThinking &&
+        old.streaming &&
         old.text.trimRight().isEmpty &&
         old.reasoning.trim().isNotEmpty &&
         item.text.trimRight().isNotEmpty) {
@@ -131,15 +134,35 @@ class _AssistantMessageState extends State<AssistantMessage> {
     }
   }
 
+  /// 正文还在长、思考没变时复用同一个思考栏实例,Flutter 不会再往下走。
+  ThinkingPill _thinkingPill(String reasoning, bool active, bool streaming) {
+    final pill = _thinking;
+    if (pill != null &&
+        pill.reasoning == reasoning &&
+        pill.active == active &&
+        pill.streaming == streaming &&
+        pill.growIn == _waited) {
+      return pill;
+    }
+    return _thinking = ThinkingPill(reasoning: reasoning, active: active, streaming: streaming, growIn: _waited);
+  }
+
   /// 同一段文字只建一次 Markdown 子树:列表每 32ms 重建一次时,
   /// 没变的消息直接复用同一个 widget 实例,Flutter 不会再往下走。
   Widget _markdown(String text, bool streaming) {
     final reveal = _reveal = _reveal || (streaming && _startedEmpty && AppMotion.fluid(context));
     if (_body == null || _bodyText != text || _bodyStreaming != streaming || _bodyReveal != reveal) {
-      // Long-press opens the menu; selecting text is one of its entries.
+      // Selection is the message's own (MessageSelection around the text).
       // repairBareViews: a model that forgets the ```dsh-ui fence still gets
       // its view drawn instead of a wall of JSON.
-      _body = MarkdownBody(text: text, streaming: streaming, reveal: reveal, selectable: false, repairBareViews: true);
+      _body = MarkdownBody(
+        text: text,
+        streaming: streaming,
+        reveal: reveal,
+        selectable: false,
+        repairBareViews: true,
+        replyTypography: true,
+      );
       _bodyText = text;
       _bodyStreaming = streaming;
       _bodyReveal = reveal;
@@ -184,55 +207,121 @@ class _AssistantMessageState extends State<AssistantMessage> {
     }
 
     final actions = widget.showActions && !streaming && text.isNotEmpty;
-    final reply = HoldLift(
-      behavior: HitTestBehavior.opaque,
-      onLongPress: streaming || text.isEmpty ? null : () => _menu(text),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (reasoning.isNotEmpty) ...[
-            ThinkingPill(
-              reasoning: reasoning,
-              active: streaming && text.isEmpty,
-              streaming: streaming,
-              growIn: _waited,
-            ),
-            if (text.isNotEmpty && !_textAfterThinking) const SizedBox(height: 8),
-          ],
-          if (text.isNotEmpty)
-            _textAfterThinking ? _FirstTextIn(child: _markdown(text, streaming)) : _markdown(text, streaming),
-          if (item.interrupted) const _InterruptedMark(),
-          // 一轮结束时和输入条上的胶囊同一节奏展开:胶囊收回多少,这里长出
-          // 多少,回答不会先被顶上去再落回来。打开对话时已结束的轮直接展开。
-          ExpandReveal(
-            open: actions,
-            duration: AppMotion.standard,
-            curve: AppMotion.std,
-            child: actions
-                ? Consumer(
-                    builder: (context, ref, _) => ReplyActionRow(
-                      // Copy / share carry a one-line summary of each visual
-                      // reply, never its raw JSON.
-                      text: () => dshUiPlainText(text),
-                      onBranch: widget.onBranch,
-                      branching: widget.branching,
-                      onShare: () => shareReply(context, widget.item),
-                      onReadAloud: () => readAloudReply(context, widget.item.key, dshUiPlainText(text)),
-                      reading: ref.watch(readAloudProvider.select((s) => s.phaseOf(widget.item.key))),
-                      onRegenerate: widget.onRegenerate,
-                      regenerating: widget.regenerating,
-                      onMore: () => _menu(text),
-                      trailing: widget.footnote,
-                    ),
-                  )
-                : const SizedBox.shrink(),
-          ),
+    final reply = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (reasoning.isNotEmpty) ...[
+          _thinkingPill(reasoning, streaming && text.isEmpty, streaming),
+          if (text.isNotEmpty && !_textAfterThinking) const SizedBox(height: 8),
         ],
-      ),
+        // Always wrapped, streaming too: the Markdown subtree keeps its place
+        // when the turn ends.
+        if (text.isNotEmpty)
+          _wrapAssistantBody(
+            context,
+            MessageSelection(
+              text: text,
+              onQuote: widget.onQuote,
+              onMore: () => _menu(text),
+              live: streaming,
+              child: _textAfterThinking ? _FirstTextIn(child: _markdown(text, streaming)) : _markdown(text, streaming),
+            ),
+          ),
+        if (item.interrupted) const _InterruptedMark(),
+        // 一轮结束时和输入条上的胶囊同一节奏展开:胶囊收回多少,这里长出
+        // 多少,回答不会先被顶上去再落回来。打开对话时已结束的轮直接展开。
+        ExpandReveal(
+          open: actions,
+          duration: AppMotion.standard,
+          curve: AppMotion.std,
+          child: actions
+              ? Consumer(
+                  builder: (context, ref, _) => ReplyActionRow(
+                    // Copy / share carry a one-line summary of each visual
+                    // reply, never its raw JSON.
+                    text: () => dshUiPlainText(text),
+                    onBranch: widget.onBranch,
+                    branching: widget.branching,
+                    onShare: () => shareReply(context, widget.item),
+                    onReadAloud: () => readAloudReply(context, widget.item.key, dshUiPlainText(text)),
+                    reading: ref.watch(readAloudProvider.select((s) => s.phaseOf(widget.item.key))),
+                    onRegenerate: widget.onRegenerate,
+                    regenerating: widget.regenerating,
+                    onMore: () => _menu(text),
+                    trailing: widget.footnote,
+                  ),
+                )
+              : const SizedBox.shrink(),
+        ),
+      ],
     );
     // 一条回复是读屏里的一个分组,里面的段落、标题照常逐个读。
-    final message = Semantics(key: const ValueKey('reply'), container: true, explicitChildNodes: true, child: reply);
+    // A screen reader's long-press opens the menu (a finger's selects text).
+    final message = Semantics(
+      key: const ValueKey('reply'),
+      container: true,
+      explicitChildNodes: true,
+      onLongPress: streaming || text.isEmpty ? null : () => _menu(text),
+      child: reply,
+    );
     return _waited ? _HandOff(waiting: false, child: message) : message;
+  }
+
+  Widget _wrapAssistantBody(BuildContext context, Widget child) {
+    final themeStyle = DshThemeStyle.of(context);
+    if (themeStyle.pack == null) return child;
+    final scheme = Theme.of(context).colorScheme;
+    final rule = themeStyle.rule ?? scheme.primary.withValues(alpha: 0.65);
+    final Widget body = switch (themeStyle.components.assistantStyle) {
+      ThemeAssistantStyle.plain => child,
+      // Full width: a short reply's card is as wide as a long one's.
+      ThemeAssistantStyle.card => SizedBox(
+        width: double.infinity,
+        child: DecoratedBox(
+          decoration: ShapeDecoration(
+            color: themeStyle.assistantBubble ?? DshSurfaces.of(context).card.fill,
+            shape: themeStyle.cardShape(themeStyle.assistantBorder ?? scheme.outlineVariant, themeStyle.borderWidth),
+          ),
+          child: Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10), child: child),
+        ),
+      ),
+      ThemeAssistantStyle.leftRule => DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(left: BorderSide(color: rule, width: 2.5)),
+        ),
+        child: Padding(padding: const EdgeInsets.only(left: 12), child: child),
+      ),
+      // Only the tint and the rule are clipped to the card's corners; the
+      // text is not, so nothing in it is cut.
+      ThemeAssistantStyle.quote => SizedBox(
+        width: double.infinity,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: themeStyle.clipFor(
+                themeStyle.cardRadius,
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withValues(alpha: 0.06),
+                    border: Border(left: BorderSide(color: rule, width: 3)),
+                  ),
+                ),
+              ),
+            ),
+            if (themeStyle.assistantBorder case final border?)
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: ShapeDecoration(shape: themeStyle.cardShape(border, themeStyle.borderWidth)),
+                ),
+              ),
+            Padding(padding: const EdgeInsets.fromLTRB(15, 10, 12, 10), child: child),
+          ],
+        ),
+      ),
+    };
+    final tag = themeRoleTag(context, themeStyle, user: false);
+    if (tag == null) return body;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [tag, body]);
   }
 
   Future<void> _menu(String markdown) async {

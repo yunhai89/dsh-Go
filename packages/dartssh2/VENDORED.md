@@ -14,6 +14,7 @@
 - `lib/src/socket/ssh_socket_io.dart`：native TCP socket 开启 `tcpNoDelay`。SSH 以小的请求/响应包为主，Nagle 在弱网或非对称链路上会把交互延迟放大到至少一个 RTT。
 - `lib/src/crypto/aead_decryptor*` 与 `lib/src/ssh_transport.dart`：入站 SSH AEAD（AES-GCM 和 OpenSSH ChaCha20-Poly1305）在独立的长期 crypto isolate 中解密。`_processPackets` 逐包等待结果，保持包序；握手、非 AEAD cipher、重连与 rekey 路径不变。worker 在 transport 关闭时一起结束；无法使用 isolate 的平台（Web）通过条件导出的内联实现保持原有行为。新增 `test/src/aead_decryptor_test.dart` 覆盖 GCM/ChaCha 往返、坏 tag 和关闭。
 - `lib/src/compression/ssh_zlib*.dart`：条件导出 dart:io 的持续 `RawZLibFilter` 流，逐包 `Z_SYNC_FLUSH` 并保留字典，不按包 finish；解压累计上限 35000 字节（兼容 32768 字节 channel data 加消息头），超限或畸形数据以 `SSHPacketError` 终止连接。RawZLibFilter 没有 abort/dispose，关闭或 rekey 时丢弃引用交原生 finalizer；不继续 drain 不可信输入。
+- `lib/src/{hostkey/hostkey_ed25519.dart,http/http_client.dart,message/msg_request.dart,sftp/sftp_file.dart,ssh_client.dart,ssh_kex_utils.dart,ssh_message.dart,utils/bcrypt.dart}`：清理上游遗留的注释掉的实现与调试输出；仅移除注释，不改变执行代码、协议或密码学实现。
 - `pubspec.yaml`：禁止发布本地补丁包。
 - 新增 `test/src/ssh_compression_test.dart`、`test/src/ssh_compression_web_test.dart` 和 `test/src/integration/openssh_compression_test.dart`。
 

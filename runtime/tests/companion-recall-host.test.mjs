@@ -10,6 +10,7 @@ import { rm } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import test from 'node:test';
 import { createCompanionRoutes } from '../bridge/dsh-go-bridge/lib/companion/routes.js';
+import { phoneMemoryRules } from '../bridge/dsh-go-bridge/lib/companion/full-context.js';
 import { createFixture, requestSystemText, assertNoRealNetwork } from './fixtures/companion-recall-engine.mjs';
 
 const execute = promisify(execFile);
@@ -114,6 +115,14 @@ integration('real clean projection rejects existing transcript, legacy persona r
   assert.equal(f.requests.length, 1, 'A binding refusal does not start an explanation or resend prior work');
 });
 
+integration('real clean projection accepts a subagent model-selection policy', { timeout: 15000 }, async (t) => {
+  const f = await fixture(t), { agent } = await f.createAgent('MODEL_POLICY');
+  agent.session.append('subagent/model-selection-policy', {
+    allowedModels: [{ provider: 'deepseek-official', model: 'deepseek-flash' }],
+  });
+  assert.equal((await f.bind(agent.id)).status, 'ready');
+});
+
 integration('actual preset switch retires permanently and old full Agent cannot send after switching back', { timeout: 15000 }, async (t) => {
   const f = await fixture(t), a = await f.createAgent('SWITCH');
   const binding = await f.bind(a.agent.id);
@@ -202,6 +211,7 @@ integration('HTTP memory clear retires the actual driver; a new clean session se
   assert.equal(accepted.status, 200);
   await f.send(a.agent, 'before clear');
   assert(requestSystemText(f.requests[0]).includes('DELETE_SENTINEL_SYNTHETIC'));
+  assert.equal((requestSystemText(f.requests[0]).match(/<companion_memory v="1">/g) ?? []).length, 1);
   const snapshot = (await request()).body;
   const cleared = await request('/memories/clear', version(snapshot));
   assert.equal(cleared.status, 200); assert.equal(cleared.body.deletedCount, 1);
@@ -213,8 +223,12 @@ integration('HTTP memory clear retires the actual driver; a new clean session se
   assert.equal((await request('/recall/bind', await f.bindInput(b.agent.id))).body.status, 'ready');
   await f.send(b.agent, 'after clear, new session');
   assert.equal(f.requests.length, 2);
-  assert(!requestSystemText(f.requests[1]).includes('companion_memory'));
-  assert(!requestSystemText(f.requests[1]).includes('DELETE_SENTINEL_SYNTHETIC'));
+  const after = requestSystemText(f.requests[1]);
+  assert(after.includes(phoneMemoryRules), 'Static interpretation rules remain after the library is cleared');
+  assert(!after.includes('<companion_memory'));
+  assert.doesNotMatch(after, /"type"\s*:\s*"companion_memory"/);
+  assert(!JSON.stringify(f.requests[1].body).includes('DELETE_SENTINEL_SYNTHETIC'));
+  assertNoRealNetwork(f);
 });
 
 integration('persisted marker survives a real engine teardown and blocks old identity at actual Session creation', { timeout: 15000 }, async () => {

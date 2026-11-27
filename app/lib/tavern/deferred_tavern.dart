@@ -9,7 +9,7 @@ import 'dart:typed_data';
 
 import 'package:dsh_tavern/dsh_tavern.dart';
 
-class DeferredTavern implements Tavern {
+class DeferredTavern implements Tavern, TavernSPresetPageLifecycle {
   DeferredTavern(Future<Tavern> opening) {
     _ready = opening.then((tavern) {
       _open = tavern;
@@ -488,6 +488,12 @@ class DeferredTavern implements Tavern {
   @override
   void stop(String chatId) => _open?.stop(chatId);
 
+  /// A chat's canvas document went: the open engine forgets its page state.
+  @override
+  void resetSPresetPage(String chatId) {
+    if (_open case final TavernSPresetPageLifecycle page) page.resetSPresetPage(chatId);
+  }
+
   @override
   Future<void> selectSibling(String chatId, String nodeId, int index) async =>
       (await _ready).selectSibling(chatId, nodeId, index);
@@ -727,6 +733,40 @@ class DeferredTavern implements Tavern {
   Future<void> deletePreset(String presetId) async => (await _ready).deletePreset(presetId);
 
   @override
+  Future<List<TavernScriptLibraryEntry>> listGlobalScripts() async => (await _ready).listGlobalScripts();
+
+  @override
+  Stream<List<TavernScriptLibraryEntry>> watchGlobalScripts() => _stream((t) => t.watchGlobalScripts());
+
+  @override
+  Future<List<TavernScriptLibraryEntry>> importGlobalScripts(String text) async =>
+      (await _ready).importGlobalScripts(text);
+
+  @override
+  Future<TavernScriptLibraryEntry> setGlobalScriptEnabled(String id, bool enabled) async =>
+      (await _ready).setGlobalScriptEnabled(id, enabled);
+
+  @override
+  Future<void> setGlobalScriptOrder(List<String> ids, {String? folderId}) async {
+    final order = List.of(ids);
+    return (await _ready).setGlobalScriptOrder(order, folderId: folderId);
+  }
+
+  @override
+  Future<void> deleteGlobalScript(String id) async => (await _ready).deleteGlobalScript(id);
+
+  @override
+  Future<String> exportGlobalScripts({String? id}) async => (await _ready).exportGlobalScripts(id: id);
+
+  @override
+  Future<TavernChatScripts> chatScripts(String chatId, {String? characterId}) async =>
+      (await _ready).chatScripts(chatId, characterId: characterId);
+
+  @override
+  Stream<TavernChatScripts> watchChatScripts(String chatId, {String? characterId}) =>
+      _stream((t) => t.watchChatScripts(chatId, characterId: characterId));
+
+  @override
   Future<List<TavernRegexScript>> listRegexScripts() async => (await _ready).listRegexScripts();
 
   @override
@@ -834,7 +874,7 @@ class DeferredTavern implements Tavern {
 /// here and the call waits for the engine. The latest host reaches the
 /// engine when it opens. Until then nothing is claimed: no methods, no
 /// scopes.
-class _DeferredScripts implements TavernScriptBridge {
+class _DeferredScripts implements TavernScriptBridge, TavernHelperGenerationControl {
   _DeferredScripts(this._tavern) {
     unawaited(
       _tavern._ready.then((t) {
@@ -995,6 +1035,36 @@ class _DeferredScripts implements TavernScriptBridge {
   /// Nothing can be generating before the engine is open.
   @override
   bool stopGenerationById(String generationId) => _tavern._open?.scripts.stopGenerationById(generationId) ?? false;
+
+  // 酒馆助手's generations, shared by every page of the engine; none before
+  // it opens.
+  TavernHelperGenerationControl? get _control => switch (_tavern._open?.scripts) {
+    final TavernHelperGenerationControl c => c,
+    _ => null,
+  };
+
+  @override
+  TavernHelperGenerationControlState get helperGenerationState =>
+      _control?.helperGenerationState ??
+      TavernHelperGenerationControlState(activeIds: const [], nonSilentIds: const []);
+
+  @override
+  Stream<TavernHelperGenerationControlState> watchHelperGenerations() => Stream.fromFuture(_tavern._ready).asyncExpand(
+    (t) => switch (t.scripts) {
+      final TavernHelperGenerationControl c => c.watchHelperGenerations(),
+      _ => const Stream.empty(),
+    },
+  );
+
+  @override
+  Future<bool> stopHelperGenerationById(String generationId) async =>
+      await _control?.stopHelperGenerationById(generationId) ?? false;
+
+  @override
+  Future<bool> stopAllHelperGenerations() async => await _control?.stopAllHelperGenerations() ?? true;
+
+  @override
+  Future<int> stopNonSilentHelperGenerations() async => await _control?.stopNonSilentHelperGenerations() ?? 0;
 
   @override
   Future<List<TavernScriptRegex>> getTavernRegexes(String contextId, TavernScriptRegexQuery query) =>

@@ -1,7 +1,6 @@
 // 资源库 › 预设 (docs/design/roleplay-roadmap.md P0, engine T20): presets
 // exported from SillyTavern, and dsh-preset-enhance share packages, imported
-// as they are; which one chats use by default; export and delete. Editing a
-// preset's prompts and numbers, and a chat choosing its own, come next.
+// as they are; which one chats use by default; export and delete.
 
 import 'dart:async';
 import 'dart:convert';
@@ -249,7 +248,6 @@ class TavernPresetsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l10n = context.l10n;
-    final theme = Theme.of(context);
     final presets = ref.watch(tavernPresetsProvider).value;
     final defaultId = ref.watch(tavernPresetSelectionProvider(null)).value?.defaultPresetId;
     Widget mark(bool isDefault) => isDefault ? Text(l10n.tavernPresetDefault) : const SizedBox.shrink();
@@ -267,13 +265,14 @@ class TavernPresetsPage extends ConsumerWidget {
         if (presets == null)
           const QuietSpinner()
         else ...[
-          SheetGroup(
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          SettingsSection(
+            // Only the built-in one so far: what can be added, under it.
+            footer: presets.isEmpty
+                ? Text(l10n.tavernPresetsEmptyMessage, key: const ValueKey('tavern-presets-empty'))
+                : null,
             children: [
               SettingsTile(
                 key: const ValueKey('tavern-preset-st'),
-                icon: AppIcons.article,
-                tinted: false,
                 title: l10n.tavernPresetStDefault,
                 subtitle: l10n.tavernPresetStDefaultNote,
                 value: mark(defaultId == null),
@@ -283,8 +282,6 @@ class TavernPresetsPage extends ConsumerWidget {
               for (final preset in presets)
                 SettingsTile(
                   key: ValueKey('tavern-preset-${preset.id}'),
-                  icon: AppIcons.article,
-                  tinted: false,
                   title: preset.name,
                   subtitle: [
                     shortTime(preset.updatedAt),
@@ -322,15 +319,6 @@ class TavernPresetsPage extends ConsumerWidget {
                 ),
             ],
           ),
-          if (presets.isEmpty)
-            Padding(
-              key: const ValueKey('tavern-presets-empty'),
-              padding: const EdgeInsets.fromLTRB(28, 0, 28, 16),
-              child: Text(
-                '${l10n.tavernPresetsEmpty}。${l10n.tavernPresetsEmptyMessage}',
-                style: theme.textTheme.bodySmall?.copyWith(color: DshColors.of(context).textTertiary, height: 1.5),
-              ),
-            ),
         ],
       ],
     );

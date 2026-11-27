@@ -6,6 +6,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 import { Config, catalogModel, runtimeSnapshot } from './config.js';
 import { generateMedia, mediaMeta, readReferences, validateReferencePins } from './media-engine.js';
 import { admitGeneration, recoverAdmission } from './budget.js';
+import { createBudgetLedger } from './budget-ledger.js';
 import { GENERATION_HEADER_INSTRUCTIONS } from './header.js';
 import { MediaError, checkAbort, safeFailure } from './errors.js';
 
@@ -295,10 +296,11 @@ export function installMedia(ctx, config, { generate, admit = admitGeneration, e
               },
             };
             if (production) {
-              context.referencePins = [];
-              context.referenceSources = await readReferences(selected.request.refs, { ...context, captureReference: pin => context.referencePins.push(pin) });
+              const pins = [];
+              const sources = await readReferences(selected.request.refs, { ...context, captureReference: pin => pins.push(pin) });
+              context.references = { pins, sources };
               context.admission = admission = await admit(selected.request, context);
-              await validateReferencePins(context.referencePins);
+              await validateReferencePins(pins);
             }
             checkAbort(signal);
             if (!background) return validateResult(await generate(selected.request, context));
@@ -475,6 +477,9 @@ export function installMedia(ctx, config, { generate, admit = admitGeneration, e
 }
 
 export async function apply(ctx, config) {
+  // The single-Host startup contract excludes live producers; refreshes do not.
+  await createBudgetLedger(join(resolveDshHome(config.dshHome), 'media', 'dsh-media', 'budget')).releaseReserved();
+  ctx.fiber.assertActive();
   const installed = installMedia(ctx, config);
   await installed.ready;
 }

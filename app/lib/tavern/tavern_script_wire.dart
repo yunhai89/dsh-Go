@@ -24,14 +24,9 @@ import 'dart:typed_data';
 import 'package:dsh_tavern/dsh_tavern.dart';
 
 class TavernScriptWire {
-  TavernScriptWire(this.bridge, {this.onGeneration});
+  TavernScriptWire(this.bridge);
 
   final TavernScriptBridge bridge;
-
-  /// Told each event of a generation asked over this wire while it runs
-  /// (its words as they come), for the page that asked; the reply itself
-  /// waits for the result.
-  final void Function(Map<String, Object?> event)? onGeneration;
 
   /// The reply to [request], always JSON; never throws.
   Future<Map<String, Object?>> handle(Object? request) async {
@@ -202,30 +197,35 @@ class TavernScriptWire {
         return null;
       case 'listInjections':
         return [for (final v in await bridge.listInjections(p.string('contextId'))) tavernScriptInjectionViewJson(v)];
-      // Asking the model (B2): the engine's request fields; the reply is the
-      // result once it is in, its events told on the way ([onGeneration]).
+      // Asking the model as 酒馆助手's generate / generateRaw: its config as
+      // the page left it (after GENERATION_REQUESTED), read by the engine's
+      // Helper requests; the reply is the Helper value (a string, or
+      // {content, reasoning, tool_calls…}). Its events reach the page as the
+      // context's own lifecycle events.
       case 'generate' || 'generateRaw':
         final contextId = p.string('contextId');
-        final request = p.object('request');
+        final config = p.object('config');
         final handle = p.method == 'generate'
-            ? await bridge.generate(contextId, TavernScriptGenerateRequest.fromJson(request))
-            : await bridge.generateRaw(contextId, TavernScriptRawRequest.fromJson(request));
-        final told = onGeneration;
-        final watch = told == null ? null : handle.events.listen((e) => told(tavernScriptGenerationEventJson(e)));
-        try {
-          final result = await handle.result;
-          return {
-            'id': result.id,
-            'text': result.text,
-            'reasoning': result.reasoning,
-            'finishReason': result.finishReason,
-            'hookIssues': [for (final x in result.hookIssues) _issueJson(x)],
-          };
-        } finally {
-          await watch?.cancel();
-        }
+            ? await bridge.generate(contextId, TavernHelperGenerateRequest.fromJson(config))
+            : await bridge.generateRaw(contextId, TavernHelperRawRequest.fromJson(config));
+        final result = await handle.result;
+        return {
+          'id': result.id,
+          'value': result.toHelperValue(),
+          'hookIssues': [for (final x in result.hookIssues) _issueJson(x)],
+        };
+      // Stopping, across every page of this engine (silent ones too).
       case 'stopGenerationById':
-        return bridge.stopGenerationById(p.string('generationId'));
+        final id = p.string('generationId');
+        return switch (bridge) {
+          final TavernHelperGenerationControl c => c.stopHelperGenerationById(id),
+          _ => bridge.stopGenerationById(id),
+        };
+      case 'stopAllGeneration':
+        return switch (bridge) {
+          final TavernHelperGenerationControl c => c.stopAllHelperGenerations(),
+          _ => throw _bad(p.method, 'This engine has no shared stop.'),
+        };
       // A Slash script (B3): run to its end; the reply is its pipe and how it
       // ended (completed, or aborted by /abort). A failure is the error.
       case 'triggerSlash':
@@ -559,7 +559,20 @@ TavernScriptOwner _owner(Map<String, Object?> json, String method) {
     kind: _enum(TavernScriptOwnerKind.values, p.string('kind'), 'script.kind', method),
     scriptId: p.string('scriptId'),
     assetId: p.stringOrNull('assetId'),
+    presetCarrier: p.has('presetCarrier') ? _carrier(p.object('presetCarrier'), method) : null,
   );
+}
+
+TavernScriptPresetCarrier _carrier(Map<String, Object?> json, String method) {
+  final p = _Params(method, json);
+  final chatId = p.stringOrNull('chatId');
+  return switch (_enum(TavernScriptPresetCarrierKind.values, p.string('kind'), 'presetCarrier.kind', method)) {
+    TavernScriptPresetCarrierKind.inline => TavernScriptPresetCarrier.inline(chatId: chatId),
+    TavernScriptPresetCarrierKind.working => TavernScriptPresetCarrier.working(
+      chatId: chatId,
+      workingId: p.string('workingId'),
+    ),
+  };
 }
 
 TavernScriptMessageRef _ref(Map<String, Object?> json, String method) {
@@ -699,8 +712,15 @@ Map<String, Object?> _mutation(TavernScriptMutation m) => {
   'refresh': m.refresh.name,
 };
 
-Map<String, Object?>? _ownerJson(TavernScriptOwner? o) =>
-    o == null ? null : {'kind': o.kind.name, 'scriptId': o.scriptId, 'assetId': o.assetId};
+Map<String, Object?>? _ownerJson(TavernScriptOwner? o) => o == null ? null : tavernScriptOwnerJson(o);
+
+/// [o] as the wire gives it; a preset's carrier only when it has one.
+Map<String, Object?> tavernScriptOwnerJson(TavernScriptOwner o) => {
+  'kind': o.kind.name,
+  'scriptId': o.scriptId,
+  'assetId': o.assetId,
+  'presetCarrier': ?o.presetCarrier?.toJson(),
+};
 
 Map<String, Object?> tavernScriptRefJson(TavernScriptMessageRef r) => {'chatId': r.chatId, 'nodeId': r.nodeId};
 
@@ -739,20 +759,6 @@ Map<String, Object?> tavernScriptInjectionViewJson(TavernScriptInjectionView v) 
     'leaseId': v.leaseId,
   };
 }
-
-/// A generation's event as the page reads it: which, how it stands, and its
-/// words so far ([text]) or just now ([delta]).
-Map<String, Object?> tavernScriptGenerationEventJson(TavernScriptGenerationEvent e) => {
-  'id': e.id,
-  'seq': e.seq,
-  'event': e.kind.name,
-  'status': e.status.name,
-  'text': e.text,
-  'delta': e.delta,
-  'reasoning': e.reasoning,
-  'finishReason': e.finishReason,
-  'isSnapshot': e.isSnapshot,
-};
 
 Map<String, Object?> _issueJson(TavernScriptIssue i) => {
   'code': i.code,
@@ -819,3 +825,14 @@ Map<String, Object?> tavernScriptMessageJson(TavernScriptMessage m) => {
       },
   ],
 };
+
+/// The app's key for the script [o] names, whole: the same script id in the
+/// global library, a preset and a card are three scripts.
+String tavernScriptKey(TavernScriptOwner o) => jsonEncode([
+  o.kind.name,
+  o.assetId,
+  o.scriptId,
+  o.presetCarrier?.kind.name,
+  o.presetCarrier?.chatId,
+  o.presetCarrier?.workingId,
+]);

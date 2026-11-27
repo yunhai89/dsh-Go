@@ -1,7 +1,7 @@
 part of 'engine.dart';
 
 state_core.StateDefinition _stateDefinition(Map<String, Object?> data) {
-  final dshgo = _map(_map(data['extensions'])['dshgo']);
+  final dshgo = _readMap(_readMap(data['extensions'])['dshgo']);
   return state_core.StateDefinition.parse(dshgo['state'], version: dshgo.containsKey('v') ? dshgo['v'] : 1);
 }
 
@@ -713,7 +713,7 @@ List<PromptInjection> _stateTurnInjections(_Turn turn) {
 
 List<Map<String, Object?>> _stateTurnTools(_Turn turn) {
   final definition = turn.stateDefinition;
-  if (definition == null || !turn.stateAutomatic || turn.config.thinking || turn.kind == _TurnKind.impersonate) {
+  if (definition == null || !turn.stateAutomatic || turn.effectiveThinking || turn.kind == _TurnKind.impersonate) {
     return [];
   }
   final input = _StateInput(turn.state);
@@ -737,7 +737,7 @@ List<Map<String, Object?>> _stateTurnTools(_Turn turn) {
 void _captureStateAssembly(_Turn turn, PromptAssembly assembly) {
   turn.stateToolAllowed =
       turn.stateAutomatic &&
-      !turn.config.thinking &&
+      !turn.effectiveThinking &&
       turn.kind != _TurnKind.impersonate &&
       _finalStateToolAllowed(assembly.body);
   if (turn.stateOfferedPrompts.isEmpty) return;
@@ -753,6 +753,10 @@ void _captureStateAssembly(_Turn turn, PromptAssembly assembly) {
 }
 
 bool _finalStateToolAllowed(Map<String, Object?> body) {
+  if (body.containsKey('thinking')) {
+    final thinking = body['thinking'];
+    if (thinking is! Map<String, Object?> || thinking['type'] != 'disabled') return false;
+  }
   final tools = body['tools'];
   if (tools is! List<Object?> ||
       !tools.any(

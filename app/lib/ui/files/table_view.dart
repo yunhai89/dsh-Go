@@ -147,7 +147,7 @@ class _SheetTableState extends State<SheetTable> {
       return painter.width;
     }
 
-    for (var c = 0; c < _columns; c++) {
+    for (var c = 0; c < widths.length; c++) {
       var widest = 0.0;
       if (rows.isNotEmpty && c < rows.first.length && rows.first[c].isNotEmpty) {
         widest = measured(rows.first[c], bold);

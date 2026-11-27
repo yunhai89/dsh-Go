@@ -6,6 +6,7 @@
 // deliveries for that context come back through [deliver] (the page's own
 // copy of variables and messages stays current).
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -52,7 +53,7 @@ class TavernCanvasCalls {
   TavernScriptPage? deliver;
 
   // A generation's events go to the page as they come, like a delivery.
-  late final _wire = TavernScriptWire(_bridge, onGeneration: (e) => deliver?.call({...e, 'kind': 'generation'}));
+  late final _wire = TavernScriptWire(_bridge);
   Future<String>? _context;
   String? _registered;
 
@@ -71,35 +72,68 @@ class TavernCanvasCalls {
     )).id;
     if (released != _released) return id;
     _registered = id;
-    pages?.add(id, (delivery) => deliver?.call(delivery) ?? Future.value(false), interact: interact);
+    pages?.add(id, (delivery) => deliver?.call(delivery) ?? Future.value(false), interact: interact, chatId: chatId);
     return id;
   }
 
-  /// A card script's own contexts (its buttons are kept on its script), by
-  /// script id: each opened on the first call made as it ({asScript}). Not
-  /// the page's: what the engine delivers goes to the page's context.
+  /// The scripts the page runs, by key ([tavernScriptKey]), as last chosen
+  /// for this chat, and the character they were chosen with.
+  var _scripts = <String, TavernRunnableScript>{};
+  String? _scriptCharacter;
+
+  /// The page's scripts now: one gone, or whose code changed (its frame
+  /// starts over), has its context closed and its buttons dropped.
+  void setScripts(TavernChatScripts chosen) {
+    final next = {for (final s in chosen.scripts) tavernScriptKey(s.owner): s};
+    final stale = {
+      for (final MapEntry(:key, :value) in _scripts.entries)
+        if (next[key]?.content != value.content) key,
+    };
+    _scripts = next;
+    _scriptCharacter = chosen.characterId;
+    if (stale.isEmpty) return;
+    liveButtons.value = {...liveButtons.value}..removeWhere((key, _) => stale.contains(key));
+    for (final key in stale) {
+      if (_scriptContexts.remove(key) case final context?) unawaited(_closeContext(context));
+    }
+  }
+
+  /// A script's own contexts (its buttons are kept on its owner), by key:
+  /// each opened on the first call made as it ({asScript}). Not the page's:
+  /// what the engine delivers goes to the page's context.
   final _scriptContexts = <String, Future<String>>{};
 
-  Future<String> _openScript(String scriptId) async {
-    final character = characterId();
+  Future<String> _openScript(String key) async {
+    final script =
+        _scripts[key] ??
+        (throw TavernScriptException(
+          code: TavernScriptErrorCode.closedContext,
+          operation: 'openContext',
+          message: 'That script no longer runs on this page.',
+        ));
     final context = await _bridge.openContext(
       TavernScriptContextSpec(
-        instanceId: '$instanceId:$scriptId',
+        instanceId: '$instanceId:$key',
         chatId: chatId,
-        characterId: character,
-        script: TavernScriptOwner(kind: TavernScriptOwnerKind.character, scriptId: scriptId, assetId: character),
+        characterId: _scriptCharacter,
+        script: script.owner,
       ),
     );
     return context.id;
   }
 
-  /// The buttons each card script shows now, by script id, as the page last
-  /// said (replaceScriptButtons…); a script not here shows its card's.
+  /// The buttons each script shows now, by key, as the page last said
+  /// (replaceScriptButtons…); a script not here shows its own list's.
   final liveButtons = ValueNotifier<Map<String, List<String>>>(const {});
 
-  /// The page saying what [scriptId]'s buttons are now.
-  void showButtons(String scriptId, List<String> names) =>
-      liveButtons.value = {...liveButtons.value, scriptId: List.unmodifiable(names)};
+  /// The page saying what the buttons of the script [key] are now.
+  void showButtons(String key, List<String> names) =>
+      liveButtons.value = {...liveButtons.value, key: List.unmodifiable(names)};
+
+  /// What scripts put in ST's places for buttons on the page (its QR bar,
+  /// its extensions menu), as the page last said: each its id there and its
+  /// words. A press goes back as {kind: press, id}.
+  final hostButtons = ValueNotifier<List<({String id, String label})>>(const []);
 
   void _forget() {
     _released++;
@@ -143,7 +177,7 @@ class TavernCanvasCalls {
     }
     final reply = await _wire.handle({
       ...request,
-      'params': {...params, 'contextId': context, ..._filters(params, context), ..._scriptOwner(params)},
+      'params': {...params, 'contextId': context, ..._filters(params, context)},
     });
     // The engine let it go (reopened, closed): the next call opens anew.
     if (reply['error'] case {'code': 'closedContext' || 'noContext'}) {
@@ -160,46 +194,52 @@ class TavernCanvasCalls {
   /// keeps), made the reference the engine calls back with: this context,
   /// this instance. A filter the page did not name that way goes as it was.
   Map<String, Object?> _filters(Map<Object?, Object?> params, String context) {
-    if (params['prompts'] case final List<Object?> prompts) {
-      return {
-        'prompts': [
-          for (final prompt in prompts)
-            if (prompt case {'filter': {'callbackId': final String callbackId}})
-              {
-                ...prompt,
-                'filter': {'contextId': context, 'instanceId': instanceId, 'callbackId': callbackId},
-              }
-            else
-              prompt,
-        ],
-      };
-    }
-    return const {};
-  }
-
-  /// A card script's own variables, as the page names their script ({kind:
-  /// 'character', scriptId}): on this chat's character's card. A group has
-  /// no one card; the engine says so.
-  Map<String, Object?> _scriptOwner(Map<Object?, Object?> params) {
-    final target = params['target'];
-    if (target case {'scope': 'script', 'scriptOwner': final Map<Object?, Object?> owner}
-        when owner['kind'] == 'character' && owner['assetId'] == null) {
-      final character = characterId();
-      if (character == null) return const {};
-      return {
-        'target': {
-          ...target,
-          'scriptOwner': {...owner, 'assetId': character},
+    Object? ref(Object? item) => switch (item) {
+      {'filter': {'callbackId': final String callbackId}} && final Map<String, Object?> named => {
+        ...named,
+        'filter': {'contextId': context, 'instanceId': instanceId, 'callbackId': callbackId},
+      },
+      _ => item,
+    };
+    return {
+      if (params['prompts'] case final List<Object?> prompts) 'prompts': [for (final prompt in prompts) ref(prompt)],
+      // A Helper generation's own injects carry their filters the same way.
+      if (params['config'] case {'injects': final List<Object?> injects} && final Map<String, Object?> config)
+        'config': {
+          ...config,
+          'injects': [for (final inject in injects) ref(inject)],
         },
-      };
-    }
-    return const {};
+    };
   }
 
   /// The page's answer to a filter it ran ({requestId, status, value, …}).
   void invoked(Map<Object?, Object?> answer) {
     if (answer['requestId'] case final String id) pages?.invoked(id, answer);
   }
+
+  /// The page is up: its context opens now, so the host reaches it even
+  /// with no script of its own on it (a preset's SPreset functions run
+  /// here). One that fails to open is opened again by the next call.
+  void pageReady() {
+    // 酒馆助手's generations across the engine's pages, for the page's own
+    // synchronous stopGenerationById answer.
+    if (_bridge case final TavernHelperGenerationControl control when _helperWatch == null) {
+      _helperWatch = control.watchHelperGenerations().listen(
+        (state) => deliver?.call({'kind': 'helperState', 'activeIds': state.activeIds}),
+      );
+    }
+    if (_context != null) return;
+    final opening = _context = _open();
+    opening.then<void>(
+      (_) {},
+      onError: (Object _) {
+        if (identical(_context, opening)) _context = null;
+      },
+    );
+  }
+
+  /// The page's answer to an SPreset evaluation it ran.
+  void spreset(Map<Object?, Object?> answer) => pages?.spresetAnswered(answer);
 
   /// The page's answer to a lifecycle event it ran ({eventId, status, issues}).
   void acknowledge(Map<Object?, Object?> answer) {
@@ -212,20 +252,23 @@ class TavernCanvasCalls {
     if (_registered case final id?) pages?.drop(id);
   }
 
+  StreamSubscription<TavernHelperGenerationControlState>? _helperWatch;
+
   /// The page is gone: its contexts go with it.
   Future<void> close() async {
+    await _helperWatch?.cancel();
+    _helperWatch = null;
     final context = _context;
     final scripts = [..._scriptContexts.values];
     _scriptContexts.clear();
     _forget();
     for (final script in scripts) {
-      try {
-        await _bridge.closeContext(await script);
-      } on Object {
-        // Never opened, or already closed.
-      }
+      await _closeContext(script);
     }
-    if (context == null) return;
+    if (context != null) await _closeContext(context);
+  }
+
+  Future<void> _closeContext(Future<String> context) async {
     try {
       await _bridge.closeContext(await context);
     } on Object {

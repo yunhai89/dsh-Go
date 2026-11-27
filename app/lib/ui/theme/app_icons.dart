@@ -355,6 +355,9 @@ abstract final class AppIcons {
   static const agentLoop = DshGlyphs.arrowsClockwise;
   static const webSearch = DshGlyphs.globeHemisphereWest;
   static const webApp = DshGlyphs.globe;
+
+  /// 酒馆设置 › 省电渲染.
+  static const lowPower = DshGlyphs.batteryPlus;
   static const mention = DshGlyphs.at;
   static const translate = DshGlyphs.translate;
   static const history = DshGlyphs.clockCounterClockwise;
@@ -441,6 +444,10 @@ abstract final class AppIcons {
   static const backgroundPrompt = DshGlyphs.bell;
   static const overlayOpacity = DshGlyphs.slidersHorizontal;
   static const overlayBall = DshGlyphs.radioButton;
+  static const edgeGlow = DshGlyphs.sparkle;
+
+  /// 用系统灵动岛显示: the island at the top of the screen.
+  static const systemIsland = DshGlyphs.deviceMobile;
 
   /// 解除限制, its 「已解除限制」 tag, and its three rules.
   static const unlocks = DshGlyphs.lockSimpleOpen;

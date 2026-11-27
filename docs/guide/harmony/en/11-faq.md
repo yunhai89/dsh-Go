@@ -32,7 +32,11 @@ After reproducing it, tap **Export recent keyboard geometry** under **This app's
 <!-- nav: commonSettings,phoneEngineKeepAlive -->
 `Settings › Background running` · [Open](dshgo://open/background)
 
-The system suspends the app soon after it leaves the screen: a running chat may go on for a short while, as long as the system allows, then pauses with the app and tries to pick up when you come back. Some versions can ask for a long-running task, so the chat goes on in the background with a notice in the notification bar; if the system says no or takes it back, it pauses the same way. This page says which your version is.
+The system may suspend the app soon after it leaves the screen. Background running offers an opt-in long-running task protection switch, off by default. Only while a local task is running and this build has the required system eligibility does the app request continuous execution and report its actual state. Turning it off or ending the task releases protection.
+
+Turning the switch on is not system approval. Missing ordinary permissions, restricted signing eligibility or unsupported system modes are reported with the necessary next step; notification settings cannot grant restricted signing eligibility. The system may refuse, cancel or revoke execution, so tasks may still pause and try to continue when you return. Local engine protection does not use silent audio or location.
+
+Remote connections have separate optional silent audio protection, off by default. It does not start the local engine. When enabled, the app tries to request a continuous audio task in the background and may use more battery. The system can refuse or revoke it; the app checks the connection when you return. The HarmonyOS app does not request location to keep a remote connection alive.
 
 To keep it going, keep the app on screen, or run it on a connected remote host. HarmonyOS has no battery-optimization or lock-in-Recents steps to try.
 

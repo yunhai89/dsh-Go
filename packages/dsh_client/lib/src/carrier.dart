@@ -170,12 +170,13 @@ class DshHttpCarrier extends DshCarrier {
       }
       decoded = await decodeOffThread(response.body.length, () => decodeBinaryResponse(response.body, boundary));
     } else {
-      decoded = asMap(
-        await decodeOffThread(
-          response.body.length,
-          () => tryDecodeJson(utf8.decode(response.body, allowMalformed: true)),
-        ),
-      );
+      final json = endpoint == 'session/page' && response.body.length < _largeJson
+          ? _parseJsonBody(response.body)
+          : await decodeOffThread(
+              response.body.length,
+              () => tryDecodeJson(utf8.decode(response.body, allowMalformed: true)),
+            );
+      decoded = asMap(json);
     }
     tracer?.call(
       DshTraceEntry(
@@ -292,4 +293,15 @@ FutureOr<Object?> _decodeMuxFrame(Object? data) {
   // worker. A 256 KiB snapshot already costs a visible slice of a frame.
   if (data.length < 256 * 1024) return tryDecodeJson(data);
   return Isolate.run(() => tryDecodeJson(data), debugName: 'dsh-mux-json');
+}
+
+const _largeJson = 1024 * 1024;
+final _utf8Json = const Utf8Decoder(allowMalformed: true).fuse(json.decoder);
+
+Object? _parseJsonBody(List<int> bytes) {
+  try {
+    return _utf8Json.convert(bytes);
+  } on FormatException {
+    return null;
+  }
 }

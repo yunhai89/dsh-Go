@@ -632,7 +632,11 @@ class AppUpdateController extends Notifier<AppUpdateState> {
     if (!isAutoCheckDue(now: _now(), lastChecked: at(_checkedKey), lastAttempt: at(_attemptKey))) return false;
     await check();
     // Switched off while the check was in flight: keep the result, skip the offer.
-    return ref.mounted && state.autoCheck && state.hasUpdate && !state.isSkipped &&
+    return ref.mounted &&
+        state.autoCheck &&
+        state.checkFailure == null &&
+        state.hasUpdate &&
+        !state.isSkipped &&
         (state.noticeOnly ? state.noticePage != null : state.asset != null);
   }
 
@@ -651,7 +655,7 @@ class AppUpdateController extends Notifier<AppUpdateState> {
     final prefs = _prefs;
     final now = _now();
     final checker = UpdateChecker(http: _http, sources: ref.read(updateSourcesProvider), userAgent: _userAgent);
-    final result = await checker.check(preferred: prefs?.getString(_endpointKey), installed: state.current);
+    final result = await checker.check(preferred: prefs?.getString(_endpointKey));
     if (!ref.mounted) return UpdateCheckPhase.idle;
     unawaited(prefs?.setInt(_attemptKey, now.millisecondsSinceEpoch));
     switch (result) {
@@ -819,11 +823,6 @@ class AppUpdateController extends Notifier<AppUpdateState> {
       // Unknown free space and no APK to patch: let the download find out.
     }
     if (!owns()) return;
-    // Room for the APK and its install staging copy. A patch needs no more:
-    // it builds the APK from the installed one and goes before the install.
-    if (app?.freeBytes case final free? when asset.size != null && free < asset.size! * 2 + _spareBytes) {
-      return fail(UpdateProblem.noSpace);
-    }
 
     final sources = ref.read(updateSourcesProvider);
     final mirror = _prefs?.getString(_mirrorKey);
@@ -849,6 +848,15 @@ class AppUpdateController extends Notifier<AppUpdateState> {
       return fail(UpdateProblem.storage);
     }
     if (!owns()) return;
+    // Room for the APK and its install staging copy; a whole APK already here
+    // (checked below) only needs the staging copy. A patch needs no more:
+    // it builds the APK from the installed one and goes before the install.
+    final cached = File('${dir.path}/${asset.name}');
+    final copies = await cached.exists() && await cached.length() == asset.size ? 1 : 2;
+    if (!owns()) return;
+    if (app?.freeBytes case final free? when asset.size != null && free < asset.size! * copies + _spareBytes) {
+      return fail(UpdateProblem.noSpace);
+    }
     final downloader = ApkDownloader(http: _http, directory: dir);
     final patch = state.patch;
     final base = app?.apkPath;
